@@ -4,7 +4,7 @@
 
 // Hardware Pin Definitions
 #define RELAY_PIN 2
-#define I2C_SDA_PIN 21
+#define I2C_SDA_PIN 19
 #define I2C_SCL_PIN 22
 
 // WiFi Configuration
