@@ -1,24 +1,39 @@
 ///
-/// WiFi and Time Test Program
+/// Full Integration Test - Complete Smart Plant Light Controller
 /// 
-/// We test the WiFi connection and NTP time synchronization
-/// components before integrating them with the plant light
-/// control system. This verifies network connectivity and
-/// time-based logic functionality.
+/// We integrate all components to create the complete smart plant
+/// light control system. This combines WiFi, time synchronization,
+/// light sensing, and relay control with intelligent decision logic.
 ///
 
 #include <Arduino.h>
+#include <Wire.h>
 #include "wifimanager.h"
 #include "timemanager.h"
+#include "lightsensor.h"
+#include "relaycontroller.h"
+#include "plantcontroller.h"
 #include "config.h"
 
+/// Component instances
 WiFiManager* wifiManager;
 TimeManager* timeManager;
+LightSensor* lightSensor;
+RelayController* relayController;
+PlantController* plantController;
 
 void displaySystemStatus();
 void displayTimeStatus();
 void displayPlantLightScheduleStatus();
 void displayWiFiStatus();
+void displayControlStatus();
+void initializeComponents();
+void waitForSystemReady();
+void displaySystemConfiguration();
+void displayFullSystemStatus();
+void displayConnectivityStatus();
+void displaySensorStatus();
+void displayRelayStatus();
 
 void setup() {
 	/// We initialize serial communication for debugging
@@ -27,201 +42,308 @@ void setup() {
 		delay(10);
 	}
 	
-	Serial.println("\n=== Smart Plant Light Controller - WiFi & Time Test ===");
-	Serial.println("Testing WiFi connection and NTP time synchronization");
+	Serial.println("\n████████████████████████████████████████████████████████");
+	Serial.println("███ Smart Plant Light Controller - Full Integration ███");
+	Serial.println("████████████████████████████████████████████████████████");
 	Serial.println();
 	
-	/// We initialize WiFi manager
-	wifiManager = new WiFiManager(WIFI_SSID, WIFI_PASSWORD);
-	wifiManager->begin();
+	/// We initialize I2C for the light sensor
+	Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+	Serial.print("I2C initialized - SDA: GPIO");
+	Serial.print(I2C_SDA_PIN);
+	Serial.print(", SCL: GPIO");
+	Serial.println(I2C_SCL_PIN);
 	
-	/// We wait for WiFi connection before starting time sync
-	Serial.println("Waiting for WiFi connection...");
-	unsigned long wifiStartTime = millis();
-	const unsigned long wifiTimeout = 30000; /// 30 second timeout
+	/// We initialize all components in dependency order
+	initializeComponents();
 	
-	while (!wifiManager->isConnected() && millis() - wifiStartTime < wifiTimeout) {
-		wifiManager->update();
-		delay(500);
-		Serial.print(".");
-	}
+	/// We wait for essential components to be ready
+	waitForSystemReady();
+	
+	/// We initialize the main plant controller
+	plantController = new PlantController(wifiManager, timeManager, lightSensor, relayController);
+	plantController->begin();
+	
 	Serial.println();
-	
-	if (wifiManager->isConnected()) {
-		Serial.println("✓ WiFi connected successfully");
-		
-		/// We initialize time manager after WiFi is connected
-		timeManager = new TimeManager(NTP_SERVER, TIMEZONE_OFFSET_HOURS);
-		timeManager->begin();
-	} else {
-		Serial.println("✗ WiFi connection failed - continuing without time sync");
-		Serial.println("Check your WiFi credentials in config.h");
-	}
-	
-	/// We display the plant light schedule configuration
+	Serial.println("🌱 Smart Plant Light Controller is now ACTIVE!");
+	Serial.println("The system will automatically control your plant lights based on:");
+	Serial.println("  📅 Time schedule AND 💡 ambient light levels");
 	Serial.println();
-	Serial.println("━━━ Plant Light Schedule Configuration ━━━");
-	Serial.print("Light ON time:  ");
-	Serial.print(LIGHT_START_HOUR);
-	Serial.println(":00");
-	Serial.print("Light OFF time: ");
-	Serial.print(LIGHT_END_HOUR);
-	Serial.println(":00");
-	Serial.print("Light threshold: ");
-	Serial.print(LIGHT_THRESHOLD_LUX);
-	Serial.println(" lux");
+	displaySystemConfiguration();
 	Serial.println();
 }
 
 void loop() {
 	static unsigned long lastStatusDisplay = 0;
-	const unsigned long displayInterval = 10000; /// Display status every 10 seconds
+	static unsigned long lastSensorUpdate = 0;
+	const unsigned long displayInterval = 15000;  /// Status every 15 seconds
+	const unsigned long sensorInterval = 2000;    /// Sensor updates every 2 seconds
 	
 	unsigned long currentTime = millis();
 	
-	/// We continuously update WiFi and time managers
+	/// We continuously update all components
 	wifiManager->update();
 	
-	if (timeManager && wifiManager->isConnected()) {
+	if (wifiManager->isConnected()) {
 		timeManager->update();
 	}
 	
-	/// We display system status periodically
+	/// We update sensor readings regularly
+	if (currentTime - lastSensorUpdate >= sensorInterval) {
+		lastSensorUpdate = currentTime;
+		if (!lightSensor->updateReading()) {
+			Serial.println("⚠ Light sensor reading failed");
+		}
+	}
+	
+	/// We run the main plant control logic
+	plantController->update();
+	
+	/// We display comprehensive status periodically
 	if (currentTime - lastStatusDisplay >= displayInterval) {
 		lastStatusDisplay = currentTime;
-		displaySystemStatus();
+		displayFullSystemStatus();
 	}
 	
-	/// We add a small delay to prevent overwhelming the system
-	delay(1000);
+	/// We add a small delay to prevent system overload
+	delay(500);
 }
 
-void displaySystemStatus() {
-	Serial.println("━━━ System Status ━━━");
+void initializeComponents() {
+	Serial.println("🔧 Initializing system components...");
 	
-	/// We display WiFi status
-	displayWiFiStatus();
-	Serial.println();
+	/// We initialize WiFi manager
+	Serial.println("  📡 WiFi Manager...");
+	wifiManager = new WiFiManager(WIFI_SSID, WIFI_PASSWORD);
+	wifiManager->begin();
 	
-	/// We display time status if available
-	if (timeManager) {
-		displayTimeStatus();
-	} else {
-		Serial.println("⏰ Time: Not initialized (WiFi required)");
+	/// We initialize relay controller (must be first for safety)
+	Serial.println("  🔌 Relay Controller...");
+	relayController = new RelayController(RELAY_PIN);
+	relayController->begin();
+	
+	/// We initialize light sensor
+	Serial.println("  💡 Light Sensor...");
+	lightSensor = new LightSensor();
+	if (!lightSensor->begin()) {
+		Serial.println("  ✗ Light sensor initialization failed!");
+		while (true) { delay(1000); }
 	}
 	
-	Serial.println();
+	Serial.println("✓ All components initialized");
 }
 
-void displayWiFiStatus() {
-	Serial.print("📡 WiFi: ");
+void waitForSystemReady() {
+	Serial.println("⏳ Waiting for system to be ready...");
 	
-	WiFiStatus status = wifiManager->getStatus();
-	switch (status) {
-		case WiFiStatus::Connected:
-			Serial.print("✓ CONNECTED");
-			break;
-		case WiFiStatus::Connecting:
-			Serial.print("⏳ CONNECTING");
-			break;
-		case WiFiStatus::Disconnected:
-			Serial.print("✗ DISCONNECTED");
-			break;
-		case WiFiStatus::Failed:
-			Serial.print("✗ FAILED");
-			break;
+	/// We wait for WiFi connection
+	Serial.println("  📡 Waiting for WiFi connection...");
+	unsigned long wifiStartTime = millis();
+	const unsigned long wifiTimeout = 60000; /// 60 second timeout
+	
+	while (!wifiManager->isConnected() && millis() - wifiStartTime < wifiTimeout) {
+		wifiManager->update();
+		delay(1000);
+		Serial.print(".");
 	}
+	Serial.println();
 	
 	if (wifiManager->isConnected()) {
-		Serial.print(" (");
+		Serial.println("  ✓ WiFi connected");
+		
+		/// We initialize time manager after WiFi is ready
+		Serial.println("  ⏰ Time Manager...");
+		timeManager = new TimeManager(NTP_SERVER, TIMEZONE_OFFSET_HOURS);
+		timeManager->begin();
+		
+		/// We wait for initial time sync
+		Serial.println("  ⏰ Waiting for time synchronization...");
+		unsigned long timeStartTime = millis();
+		const unsigned long timeTimeout = 30000; /// 30 second timeout
+		
+		while (!timeManager->hasValidTime() && millis() - timeStartTime < timeTimeout) {
+			timeManager->update();
+			delay(1000);
+			Serial.print(".");
+		}
+		Serial.println();
+		
+		if (timeManager->hasValidTime()) {
+			Serial.println("  ✓ Time synchronized");
+		} else {
+			Serial.println("  ⚠ Time sync failed - continuing with limited functionality");
+		}
+	} else {
+		Serial.println("  ⚠ WiFi connection failed - continuing without time sync");
+		timeManager = nullptr;
+	}
+	
+	/// We take initial sensor readings
+	Serial.println("  💡 Taking initial sensor readings...");
+	for (int i = 0; i < 5; i++) {
+		lightSensor->updateReading();
+		delay(500);
+	}
+	
+	Serial.println("✓ System ready for operation");
+}
+
+void displaySystemConfiguration() {
+	Serial.println("━━━ System Configuration ━━━");
+	Serial.print("📅 Schedule: ");
+	Serial.print(LIGHT_START_HOUR);
+	Serial.print(":00 - ");
+	Serial.print(LIGHT_END_HOUR);
+	Serial.print(":00 ");
+	if (LIGHT_START_HOUR > LIGHT_END_HOUR) {
+		Serial.println("(overnight schedule)");
+	} else {
+		Serial.println("(daytime schedule)");
+	}
+	
+	Serial.print("💡 Light threshold: ");
+	Serial.print(LIGHT_THRESHOLD_LUX);
+	Serial.println(" lux");
+	
+	Serial.print("🔄 Check interval: ");
+	Serial.print(CHECK_INTERVAL_MS / 1000);
+	Serial.println(" seconds");
+	
+	Serial.print("🔌 Relay pin: GPIO");
+	Serial.println(RELAY_PIN);
+}
+
+void displayFullSystemStatus() {
+	Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+	Serial.println("                 🌱 SYSTEM STATUS 🌱");
+	Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+	
+	/// We display connectivity status
+	displayConnectivityStatus();
+	Serial.println();
+	
+	/// We display time status
+	displayTimeStatus();
+	Serial.println();
+	
+	/// We display sensor status
+	displaySensorStatus();
+	Serial.println();
+	
+	/// We display relay status
+	displayRelayStatus();
+	Serial.println();
+	
+	/// We display control logic status
+	displayControlStatus();
+	
+	Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+	Serial.println();
+}
+
+void displayConnectivityStatus() {
+	Serial.print("📡 WiFi: ");
+	if (wifiManager->isConnected()) {
+		Serial.print("✅ CONNECTED (");
 		Serial.print(wifiManager->getLocalIP());
 		Serial.print(", ");
 		Serial.print(wifiManager->getSignalStrength());
-		Serial.print(" dBm)");
-	}
-	
-	Serial.println();
-	Serial.print("   Connection attempts: ");
-	Serial.println(wifiManager->getConnectionAttempts());
-	
-	if (!wifiManager->isConnected()) {
-		Serial.print("   Time since last connection: ");
-		unsigned long timeSince = wifiManager->getTimeSinceLastConnection();
-		if (timeSince == ULONG_MAX) {
-			Serial.println("Never connected");
-		} else {
-			Serial.print(timeSince / 1000);
-			Serial.println(" seconds");
-		}
+		Serial.println(" dBm)");
+	} else {
+		Serial.println("❌ DISCONNECTED");
 	}
 }
 
 void displayTimeStatus() {
 	Serial.print("⏰ Time: ");
-	
-	if (timeManager->hasValidTime()) {
-		Serial.print("✓ SYNCHRONIZED - ");
+	if (timeManager && timeManager->hasValidTime()) {
+		Serial.print("✅ ");
 		Serial.print(timeManager->getCurrentTimeString());
-		Serial.print(" (");
-		Serial.print(timeManager->getCurrentDateString());
-		Serial.println(")");
-		
-		/// We display sync information
-		Serial.print("   Last sync: ");
-		unsigned long timeSinceSync = timeManager->getTimeSinceLastSync();
-		Serial.print(timeSinceSync / 1000);
-		Serial.print(" seconds ago, ");
-		Serial.print(timeManager->getSyncCount());
-		Serial.println(" total syncs");
-		
-		/// We test the time-based plant light logic
-		displayPlantLightScheduleStatus();
-		
+		Serial.print(" (synced ");
+		Serial.print(timeManager->getTimeSinceLastSync() / 1000);
+		Serial.println("s ago)");
 	} else {
-		Serial.println("✗ NOT SYNCHRONIZED");
-		Serial.print("   Sync attempts: ");
-		Serial.println(timeManager->getSyncCount());
-		
-		if (timeManager->needsSync()) {
-			Serial.println("   Status: Needs sync");
-		}
+		Serial.println("❌ NO VALID TIME");
 	}
 }
 
-void displayPlantLightScheduleStatus() {
-	/// We test the plant light schedule logic
-	bool inSchedule = timeManager->isTimeInRange(LIGHT_START_HOUR, LIGHT_END_HOUR);
-	int currentHour = timeManager->getCurrentHour();
-	
-	Serial.print("   Schedule: ");
-	if (inSchedule) {
-		Serial.print("🌱 IN SCHEDULE (lights should be available");
-		if (LIGHT_START_HOUR > LIGHT_END_HOUR) {
-			Serial.print(" - overnight schedule");
-		}
+void displaySensorStatus() {
+	Serial.print("💡 Light: ");
+	if (lightSensor->isSensorHealthy()) {
+		float lux = lightSensor->getCurrentLux();
+		Serial.print("✅ ");
+		Serial.print(lux, 1);
+		Serial.print(" lux (");
+		Serial.print(lux < LIGHT_THRESHOLD_LUX ? "DARK" : "BRIGHT");
 		Serial.println(")");
 	} else {
-		Serial.println("🌙 OUT OF SCHEDULE (lights should be off regardless of light level)");
+		Serial.println("❌ SENSOR FAILURE");
 	}
-	
-	Serial.print("   Current hour: ");
-	Serial.print(currentHour);
-	Serial.print(", Schedule: ");
-	Serial.print(LIGHT_START_HOUR);
-	Serial.print(":00 to ");
-	Serial.print(LIGHT_END_HOUR);
-	Serial.println(":00");
+}
+
+void displayRelayStatus() {
+	bool relayOn = relayController->getRelayState();
+	Serial.print("🔌 Relay: ");
+	Serial.print(relayOn ? "✅ ON" : "⭕ OFF");
+	Serial.print(" (");
+	Serial.print(plantController->getRelayChanges());
+	Serial.println(" changes total)");
+}
+
+void displayControlStatus() {
+	Serial.print("🤖 Control: ");
+	if (plantController->areAllComponentsHealthy()) {
+		Serial.print("✅ ACTIVE - ");
+		
+		/// We show the current logic decision
+		ControlDecision decision = plantController->getLastDecision();
+		ControlReason reason = plantController->getLastReason();
+		
+		switch (decision) {
+			case ControlDecision::TurnOn:
+				Serial.print("🌙 LIGHTS ON");
+				break;
+			case ControlDecision::TurnOff:
+				Serial.print("☀️ LIGHTS OFF");
+				break;
+			case ControlDecision::KeepCurrent:
+				Serial.print("↔️ NO CHANGE");
+				break;
+			case ControlDecision::WaitForData:
+				Serial.print("⏳ WAITING");
+				break;
+		}
+		
+		Serial.print(" (");
+		switch (reason) {
+			case ControlReason::OutOfSchedule:
+				Serial.print("out of schedule");
+				break;
+			case ControlReason::InScheduleDark:
+				Serial.print("in schedule + dark");
+				break;
+			case ControlReason::InScheduleBright:
+				Serial.print("in schedule + bright");
+				break;
+			default:
+				Serial.print("system issue");
+				break;
+		}
+		Serial.println(")");
+		
+		Serial.print("    Decisions made: ");
+		Serial.println(plantController->getDecisionCount());
+		
+	} else {
+		Serial.println("❌ DEGRADED (missing data)");
+	}
 }
 
 /// We clean up memory on program end
 void cleanup() {
-	if (timeManager) {
-		delete timeManager;
-		timeManager = nullptr;
-	}
-	
-	if (wifiManager) {
-		delete wifiManager;
-		wifiManager = nullptr;
-	}
+	if (plantController) { delete plantController; plantController = nullptr; }
+	if (relayController) { delete relayController; relayController = nullptr; }
+	if (lightSensor) { delete lightSensor; lightSensor = nullptr; }
+	if (timeManager) { delete timeManager; timeManager = nullptr; }
+	if (wifiManager) { delete wifiManager; wifiManager = nullptr; }
 }
