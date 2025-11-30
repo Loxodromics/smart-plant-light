@@ -10,12 +10,14 @@
 #include "plantcontroller.h"
 #include "config.h"
 
-PlantController::PlantController(WiFiManager* wifiManager, TimeManager* timeManager, 
-							LightSensor* lightSensor, RelayController* relayController)
+PlantController::PlantController(WiFiManager* wifiManager, TimeManager* timeManager,
+							LightSensor* lightSensor, RelayController* relayController,
+							SystemDiagnostics* diagnostics)
 	: wifiManager(wifiManager)
 	, timeManager(timeManager)
 	, lightSensor(lightSensor)
 	, relayController(relayController)
+	, diagnostics(diagnostics)
 	, lastDecision(ControlDecision::WaitForData)
 	, lastReason(ControlReason::NoValidTime)
 	, lastDecisionTime(0)
@@ -27,6 +29,9 @@ PlantController::PlantController(WiFiManager* wifiManager, TimeManager* timeMana
 	, scheduleStartHour(LIGHT_START_HOUR)
 	, scheduleEndHour(LIGHT_END_HOUR)
 	, lightThresholdLux(LIGHT_THRESHOLD_LUX)
+	, lastSensorRecoveryAttempt(0)
+	, lastTimeRecoveryAttempt(0)
+	, recoveryInterval(60000)  /// 1 minute cooldown between recovery attempts
 {
 	/// We initialize all member variables for clean state
 }
@@ -71,16 +76,19 @@ void PlantController::update() {
 	if (!this->automaticControlEnabled) {
 		return;
 	}
-	
+
+	/// We attempt component recovery if needed
+	this->attemptComponentRecovery();
+
 	/// We analyze current conditions and make decision
 	ControlReason reason;
 	ControlDecision decision = this->analyzeConditions(reason);
-	
+
 	/// We execute the decision if it's different from current state
 	if (decision != ControlDecision::KeepCurrent && decision != ControlDecision::WaitForData) {
 		this->executeDecision(decision, reason);
 	}
-	
+
 	/// We update our state tracking
 	this->lastDecision = decision;
 	this->lastReason = reason;
@@ -266,5 +274,58 @@ const char* PlantController::getReasonString(ControlReason reason) const {
 		case ControlReason::SensorFailure: return "Sensor failure";
 		case ControlReason::RelayBusy: return "Relay busy";
 		default: return "Unknown reason";
+	}
+}
+
+void PlantController::attemptComponentRecovery() {
+	unsigned long currentTime = millis();
+
+	/// We check if light sensor needs recovery
+	if (!this->lightSensor->isSensorHealthy()) {
+		/// We only attempt recovery if cooldown period has passed
+		if (currentTime - this->lastSensorRecoveryAttempt >= this->recoveryInterval) {
+			this->lastSensorRecoveryAttempt = currentTime;
+
+			Serial.println("PlantController: Sensor unhealthy, triggering recovery");
+			this->diagnostics->recordFailure(ComponentType::LightSensor, "Sensor health check failed");
+
+			bool recovered = this->lightSensor->attemptRecovery();
+			this->diagnostics->recordRecovery(ComponentType::LightSensor, recovered);
+
+			if (recovered) {
+				Serial.println("PlantController: ✓ Sensor recovery successful");
+			} else {
+				Serial.println("PlantController: ✗ Sensor recovery failed");
+			}
+		}
+	}
+
+	/// We check if time manager needs recovery
+	if (!this->timeManager->hasValidTime()) {
+		/// We only attempt recovery if cooldown period has passed
+		if (currentTime - this->lastTimeRecoveryAttempt >= this->recoveryInterval) {
+			this->lastTimeRecoveryAttempt = currentTime;
+
+			Serial.println("PlantController: Time invalid, triggering recovery");
+			this->diagnostics->recordFailure(ComponentType::Time, "Time validation failed");
+
+			bool recovered = this->timeManager->attemptRecovery();
+			this->diagnostics->recordRecovery(ComponentType::Time, recovered);
+
+			if (recovered) {
+				Serial.println("PlantController: ✓ Time recovery successful");
+			} else {
+				Serial.println("PlantController: ✗ Time recovery failed");
+			}
+		}
+	}
+
+	/// WiFi manager already has auto-reconnection, we just track failures
+	if (!this->wifiManager->isConnected()) {
+		/// We record the failure for diagnostics but let WiFiManager handle reconnection
+		unsigned long timeSinceLastConnection = this->wifiManager->getTimeSinceLastConnection();
+		if (timeSinceLastConnection > 300000) {  /// More than 5 minutes disconnected
+			this->diagnostics->recordFailure(ComponentType::WiFi, "Extended disconnection");
+		}
 	}
 }

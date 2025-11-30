@@ -13,6 +13,7 @@
 #include "lightsensor.h"
 #include "relaycontroller.h"
 #include "plantcontroller.h"
+#include "systemdiagnostics.h"
 #include "config.h"
 
 /// Component instances
@@ -21,6 +22,7 @@ TimeManager* timeManager;
 LightSensor* lightSensor;
 RelayController* relayController;
 PlantController* plantController;
+SystemDiagnostics* diagnostics;
 
 void displaySystemStatus();
 void displayTimeStatus();
@@ -41,27 +43,34 @@ void setup() {
 	while (!Serial) {
 		delay(10);
 	}
-	
+
 	Serial.println("\n████████████████████████████████████████████████████████");
 	Serial.println("███ Smart Plant Light Controller - Full Integration ███");
 	Serial.println("████████████████████████████████████████████████████████");
 	Serial.println();
-	
+
+	/// We initialize diagnostics first to track startup
+	Serial.println("🔧 Initializing System Diagnostics...");
+	diagnostics = new SystemDiagnostics();
+	diagnostics->begin();
+	diagnostics->recordStartup();
+	Serial.println();
+
 	/// We initialize I2C for the light sensor
 	Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 	Serial.print("I2C initialized - SDA: GPIO");
 	Serial.print(I2C_SDA_PIN);
 	Serial.print(", SCL: GPIO");
 	Serial.println(I2C_SCL_PIN);
-	
+
 	/// We initialize all components in dependency order
 	initializeComponents();
 	
 	/// We wait for essential components to be ready
 	waitForSystemReady();
-	
-	/// We initialize the main plant controller
-	plantController = new PlantController(wifiManager, timeManager, lightSensor, relayController);
+
+	/// We initialize the main plant controller with diagnostics
+	plantController = new PlantController(wifiManager, timeManager, lightSensor, relayController, diagnostics);
 	plantController->begin();
 	
 	Serial.println();
@@ -91,11 +100,19 @@ void loop() {
 	/// We update sensor readings regularly
 	if (currentTime - lastSensorUpdate >= sensorInterval) {
 		lastSensorUpdate = currentTime;
-		if (!lightSensor->updateReading()) {
+		if (lightSensor->updateReading()) {
+			/// We update sensor stability metrics
+			diagnostics->updateSensorMetric(lightSensor->getCurrentLux());
+		} else {
 			Serial.println("⚠ Light sensor reading failed");
 		}
 	}
-	
+
+	/// We update WiFi metrics if connected
+	if (wifiManager->isConnected()) {
+		diagnostics->updateWiFiMetric(wifiManager->getSignalStrength());
+	}
+
 	/// We run the main plant control logic
 	plantController->update();
 	
@@ -236,7 +253,11 @@ void displayFullSystemStatus() {
 	
 	/// We display control logic status
 	displayControlStatus();
-	
+	Serial.println();
+
+	/// We display diagnostics
+	diagnostics->displayReport();
+
 	Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 	Serial.println();
 }
@@ -341,6 +362,11 @@ void displayControlStatus() {
 
 /// We clean up memory on program end
 void cleanup() {
+	if (diagnostics) {
+		diagnostics->clearCrashMarker();  /// Mark clean shutdown
+		delete diagnostics;
+		diagnostics = nullptr;
+	}
 	if (plantController) { delete plantController; plantController = nullptr; }
 	if (relayController) { delete relayController; relayController = nullptr; }
 	if (lightSensor) { delete lightSensor; lightSensor = nullptr; }

@@ -50,6 +50,15 @@ public:
 	/// We use this when we want to start fresh after a configuration change
 	void resetAveraging();
 
+	/// Attempt to recover from sensor failure
+	/// We reset I2C bus and reinitialize the sensor
+	/// Returns true if recovery successful, false if failed
+	[[nodiscard]] bool attemptRecovery();
+
+	/// Get consecutive failure count
+	/// We track failures to trigger recovery attempts
+	[[nodiscard]] unsigned long getConsecutiveFailures() const;
+
 private:
 	Adafruit_VEML7700 veml;
 	
@@ -65,6 +74,7 @@ private:
 	unsigned long readingCount;
 	unsigned long lastReadingTime;
 	bool sensorInitialized;
+	unsigned long consecutiveFailures;
 	
 	/// Calculate the current average from the buffer
 	/// We recalculate this each time to handle the circular buffer properly
@@ -73,6 +83,10 @@ private:
 	/// Add a new reading to the circular buffer
 	/// We manage the buffer index and full state automatically
 	void addToBuffer(float newReading);
+
+	/// Reset the I2C bus
+	/// We perform a software reset of the I2C bus to recover from lockup
+	void resetI2CBus();
 };
 
 #endif /// LIGHTSENSOR_H

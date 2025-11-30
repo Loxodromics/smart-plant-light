@@ -15,6 +15,7 @@
 #include "timemanager.h"
 #include "lightsensor.h"
 #include "relaycontroller.h"
+#include "systemdiagnostics.h"
 
 enum class ControlDecision {
 	TurnOn,          /// Lights should be ON (in schedule + dark)
@@ -34,9 +35,10 @@ enum class ControlReason {
 
 class PlantController {
 public:
-	PlantController(WiFiManager* wifiManager, TimeManager* timeManager, 
-				LightSensor* lightSensor, RelayController* relayController);
-	
+	PlantController(WiFiManager* wifiManager, TimeManager* timeManager,
+				LightSensor* lightSensor, RelayController* relayController,
+				SystemDiagnostics* diagnostics);
+
 	/// Initialize the plant controller
 	/// We set up initial state and validate all components
 	void begin();
@@ -74,12 +76,17 @@ public:
 	/// Check if automatic control is currently enabled
 	[[nodiscard]] bool isAutomaticControlEnabled() const;
 
+	/// Attempt to recover from component failures
+	/// We check for failures and trigger recovery attempts
+	void attemptComponentRecovery();
+
 private:
 	/// Component references
 	WiFiManager* wifiManager;
 	TimeManager* timeManager;
 	LightSensor* lightSensor;
 	RelayController* relayController;
+	SystemDiagnostics* diagnostics;
 	
 	/// Control state
 	ControlDecision lastDecision;
@@ -95,7 +102,12 @@ private:
 	int scheduleStartHour;
 	int scheduleEndHour;
 	float lightThresholdLux;
-	
+
+	/// Recovery tracking
+	unsigned long lastSensorRecoveryAttempt;
+	unsigned long lastTimeRecoveryAttempt;
+	unsigned long recoveryInterval;  /// Cooldown period between recovery attempts
+
 	/// Core decision logic methods
 	/// We break down the decision process into clear steps
 	[[nodiscard]] ControlDecision analyzeConditions(ControlReason& reason) const;
