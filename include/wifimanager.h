@@ -67,8 +67,8 @@ public:
 	[[nodiscard]] float getConnectionSuccessRate() const;
 
 private:
-	const char* ssid;
-	const char* password;
+	char ssid[32];
+	char password[64];
 	
 	WiFiStatus currentStatus;
 	unsigned long lastConnectionAttempt;

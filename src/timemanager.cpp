@@ -109,6 +109,13 @@ int TimeManager::getCurrentMinute() const {
 	return this->ntpClient->getMinutes();
 }
 
+int TimeManager::getCurrentSecond() const {
+	if (!this->hasValidTime()) {
+		return -1;
+	}
+	return this->ntpClient->getSeconds();
+}
+
 String TimeManager::getCurrentTimeString() const {
 	if (!this->hasValidTime()) {
 		return "No Time Available";
@@ -230,4 +237,27 @@ bool TimeManager::attemptRecovery() {
 		Serial.println("TimeManager: ✗ Recovery failed");
 		return false;
 	}
+}
+
+void TimeManager::setTimezoneOffset(int offsetHours) {
+	/// We update the timezone offset
+	this->timezoneOffsetSeconds = offsetHours * 3600;
+
+	/// We update the NTP client with new timezone
+	/// Note: This requires recreating the NTP client
+	delete this->ntpClient;
+	this->ntpClient = new NTPClient(this->ntpUDP, this->ntpServer, this->timezoneOffsetSeconds);
+	this->ntpClient->begin();
+	this->ntpClient->setUpdateInterval(this->syncInterval);
+
+	Serial.print("TimeManager: Timezone updated to UTC");
+	Serial.print(offsetHours >= 0 ? "+" : "");
+	Serial.println(offsetHours);
+
+	/// We force immediate resync with new timezone
+	this->syncTime();
+}
+
+bool TimeManager::isTimeValid() const {
+	return this->hasValidTime();
 }

@@ -39,7 +39,10 @@ public:
 	
 	/// Get current minute (0-59)
 	[[nodiscard]] int getCurrentMinute() const;
-	
+
+	/// Get current second (0-59)
+	[[nodiscard]] int getCurrentSecond() const;
+
 	/// Get current time as formatted string (HH:MM:SS)
 	[[nodiscard]] String getCurrentTimeString() const;
 	
@@ -71,6 +74,13 @@ public:
 	/// Attempt recovery from time sync failure
 	/// We force immediate resync and clear stale state
 	[[nodiscard]] bool attemptRecovery();
+
+	/// Update timezone offset
+	/// We allow runtime timezone changes without recompiling
+	void setTimezoneOffset(int offsetHours);
+
+	/// Check if time is valid (synced and not stale)
+	[[nodiscard]] bool isTimeValid() const;
 
 private:
 	WiFiUDP ntpUDP;

@@ -80,6 +80,10 @@ public:
 	/// We check for failures and trigger recovery attempts
 	void attemptComponentRecovery();
 
+	/// Update configuration from ConfigManager
+	/// We allow runtime configuration changes without recompiling
+	void updateConfiguration(int startHour, int endHour, float thresholdLux);
+
 private:
 	/// Component references
 	WiFiManager* wifiManager;

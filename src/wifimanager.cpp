@@ -10,9 +10,7 @@
 #include "config.h"
 
 WiFiManager::WiFiManager(const char* ssid, const char* password)
-	: ssid(ssid)
-	, password(password)
-	, currentStatus(WiFiStatus::Disconnected)
+	: currentStatus(WiFiStatus::Disconnected)
 	, lastConnectionAttempt(0)
 	, lastSuccessfulConnection(0)
 	, connectionTimeout(WIFI_TIMEOUT_MS)
@@ -20,7 +18,13 @@ WiFiManager::WiFiManager(const char* ssid, const char* password)
 	, connectionAttempts(0)
 	, successfulConnections(0)
 {
-	/// We initialize member variables in constructor for clean state
+	/// We copy the SSID and password to internal storage
+	/// This allows WiFiManager to work with runtime-provided credentials
+	strncpy(this->ssid, ssid, sizeof(this->ssid) - 1);
+	this->ssid[sizeof(this->ssid) - 1] = '\0';
+
+	strncpy(this->password, password, sizeof(this->password) - 1);
+	this->password[sizeof(this->password) - 1] = '\0';
 }
 
 void WiFiManager::begin() {
