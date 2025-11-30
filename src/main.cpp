@@ -14,15 +14,19 @@
 #include "relaycontroller.h"
 #include "plantcontroller.h"
 #include "systemdiagnostics.h"
+#include "configmanager.h"
+#include "webserver.h"
 #include "config.h"
 
 /// Component instances
+ConfigManager* configManager;
 WiFiManager* wifiManager;
 TimeManager* timeManager;
 LightSensor* lightSensor;
 RelayController* relayController;
 PlantController* plantController;
 SystemDiagnostics* diagnostics;
+PlantWebServer* webServer;
 
 void displaySystemStatus();
 void displayTimeStatus();
@@ -49,7 +53,13 @@ void setup() {
 	Serial.println("████████████████████████████████████████████████████████");
 	Serial.println();
 
-	/// We initialize diagnostics first to track startup
+	/// We initialize configuration manager first
+	Serial.println("🔧 Initializing Configuration Manager...");
+	configManager = new ConfigManager();
+	configManager->begin();
+	Serial.println();
+
+	/// We initialize diagnostics to track startup
 	Serial.println("🔧 Initializing System Diagnostics...");
 	diagnostics = new SystemDiagnostics();
 	diagnostics->begin();
@@ -72,7 +82,22 @@ void setup() {
 	/// We initialize the main plant controller with diagnostics
 	plantController = new PlantController(wifiManager, timeManager, lightSensor, relayController, diagnostics);
 	plantController->begin();
-	
+
+	/// We update plant controller with runtime configuration
+	const PlantLightConfig& config = configManager->getConfig();
+	plantController->updateConfiguration(config.lightStartHour, config.lightEndHour, config.lightThresholdLux);
+
+	/// We initialize web server if WiFi is connected
+	if (wifiManager->isConnected()) {
+		Serial.println("🌐 Starting Web Server...");
+		webServer = new PlantWebServer(configManager, plantController, lightSensor, timeManager, wifiManager, relayController);
+		webServer->begin();
+		Serial.print("✅ Web interface available at http://");
+		Serial.println(wifiManager->getLocalIP());
+	} else {
+		webServer = nullptr;
+	}
+
 	Serial.println();
 	Serial.println("🌱 Smart Plant Light Controller is now ACTIVE!");
 	Serial.println("The system will automatically control your plant lights based on:");
@@ -128,10 +153,13 @@ void loop() {
 
 void initializeComponents() {
 	Serial.println("🔧 Initializing system components...");
-	
-	/// We initialize WiFi manager
+
+	/// We get configuration from ConfigManager
+	const PlantLightConfig& config = configManager->getConfig();
+
+	/// We initialize WiFi manager with runtime credentials
 	Serial.println("  📡 WiFi Manager...");
-	wifiManager = new WiFiManager(WIFI_SSID, WIFI_PASSWORD);
+	wifiManager = new WiFiManager(config.wifiSSID, config.wifiPassword);
 	wifiManager->begin();
 	
 	/// We initialize relay controller (must be first for safety)
@@ -167,10 +195,13 @@ void waitForSystemReady() {
 	
 	if (wifiManager->isConnected()) {
 		Serial.println("  ✓ WiFi connected");
-		
-		/// We initialize time manager after WiFi is ready
+
+		/// We get configuration from ConfigManager
+		const PlantLightConfig& config = configManager->getConfig();
+
+		/// We initialize time manager after WiFi is ready with runtime timezone
 		Serial.println("  ⏰ Time Manager...");
-		timeManager = new TimeManager(NTP_SERVER, TIMEZONE_OFFSET_HOURS);
+		timeManager = new TimeManager(NTP_SERVER, config.timezoneOffsetHours);
 		timeManager->begin();
 		
 		/// We wait for initial time sync
@@ -206,26 +237,32 @@ void waitForSystemReady() {
 }
 
 void displaySystemConfiguration() {
+	const PlantLightConfig& config = configManager->getConfig();
+
 	Serial.println("━━━ System Configuration ━━━");
 	Serial.print("📅 Schedule: ");
-	Serial.print(LIGHT_START_HOUR);
+	Serial.print(config.lightStartHour);
 	Serial.print(":00 - ");
-	Serial.print(LIGHT_END_HOUR);
+	Serial.print(config.lightEndHour);
 	Serial.print(":00 ");
-	if (LIGHT_START_HOUR > LIGHT_END_HOUR) {
+	if (config.lightStartHour > config.lightEndHour) {
 		Serial.println("(overnight schedule)");
 	} else {
 		Serial.println("(daytime schedule)");
 	}
-	
+
 	Serial.print("💡 Light threshold: ");
-	Serial.print(LIGHT_THRESHOLD_LUX);
+	Serial.print(config.lightThresholdLux);
 	Serial.println(" lux");
-	
+
+	Serial.print("🌐 Timezone: UTC");
+	Serial.print(config.timezoneOffsetHours >= 0 ? "+" : "");
+	Serial.println(config.timezoneOffsetHours);
+
 	Serial.print("🔄 Check interval: ");
 	Serial.print(CHECK_INTERVAL_MS / 1000);
 	Serial.println(" seconds");
-	
+
 	Serial.print("🔌 Relay pin: GPIO");
 	Serial.println(RELAY_PIN);
 }
@@ -289,13 +326,15 @@ void displayTimeStatus() {
 }
 
 void displaySensorStatus() {
+	const PlantLightConfig& config = configManager->getConfig();
+
 	Serial.print("💡 Light: ");
 	if (lightSensor->isSensorHealthy()) {
 		float lux = lightSensor->getCurrentLux();
 		Serial.print("✅ ");
 		Serial.print(lux, 1);
 		Serial.print(" lux (");
-		Serial.print(lux < LIGHT_THRESHOLD_LUX ? "DARK" : "BRIGHT");
+		Serial.print(lux < config.lightThresholdLux ? "DARK" : "BRIGHT");
 		Serial.println(")");
 	} else {
 		Serial.println("❌ SENSOR FAILURE");
@@ -367,9 +406,11 @@ void cleanup() {
 		delete diagnostics;
 		diagnostics = nullptr;
 	}
+	if (webServer) { delete webServer; webServer = nullptr; }
 	if (plantController) { delete plantController; plantController = nullptr; }
 	if (relayController) { delete relayController; relayController = nullptr; }
 	if (lightSensor) { delete lightSensor; lightSensor = nullptr; }
 	if (timeManager) { delete timeManager; timeManager = nullptr; }
 	if (wifiManager) { delete wifiManager; wifiManager = nullptr; }
+	if (configManager) { delete configManager; configManager = nullptr; }
 }

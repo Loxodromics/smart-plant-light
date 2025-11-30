@@ -139,12 +139,32 @@ void PlantController::setAutomaticControl(bool enabled) {
 	this->automaticControlEnabled = enabled;
 	Serial.print("PlantController: Automatic control ");
 	Serial.println(enabled ? "ENABLED" : "DISABLED");
-	
+
 	if (!enabled) {
 		/// We turn off lights when disabling automatic control for safety
 		Serial.println("PlantController: Turning off lights (automatic control disabled)");
 		this->relayController->setRelayState(false);
 	}
+}
+
+void PlantController::updateConfiguration(int startHour, int endHour, float thresholdLux) {
+	/// We update the configuration with new values
+	this->scheduleStartHour = startHour;
+	this->scheduleEndHour = endHour;
+	this->lightThresholdLux = thresholdLux;
+
+	Serial.println("PlantController: Configuration updated");
+	Serial.print("  Schedule: ");
+	Serial.print(this->scheduleStartHour);
+	Serial.print(":00 to ");
+	Serial.print(this->scheduleEndHour);
+	Serial.println(":00");
+	Serial.print("  Light threshold: ");
+	Serial.print(this->lightThresholdLux);
+	Serial.println(" lux");
+
+	/// We force immediate re-evaluation with new settings
+	this->forceUpdate();
 }
 
 bool PlantController::isAutomaticControlEnabled() const {
