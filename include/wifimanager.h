@@ -60,6 +60,12 @@ public:
 	/// Get number of connection attempts since startup
 	[[nodiscard]] unsigned long getConnectionAttempts() const;
 
+	/// Get number of successful connections since startup
+	[[nodiscard]] unsigned long getSuccessfulConnections() const;
+
+	/// Get connection success rate (0.0 to 1.0)
+	[[nodiscard]] float getConnectionSuccessRate() const;
+
 private:
 	const char* ssid;
 	const char* password;
@@ -70,6 +76,7 @@ private:
 	unsigned long connectionTimeout;
 	unsigned long reconnectInterval;
 	unsigned long connectionAttempts;
+	unsigned long successfulConnections;
 	
 	/// Check if enough time has passed for reconnection attempt
 	/// We implement exponential backoff to avoid overwhelming the network

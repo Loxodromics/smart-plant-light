@@ -117,9 +117,31 @@ src/
 - Manual override capability
 - Performance metrics tracking (decisions made, relay changes)
 
+### ✅ Phase 5: Advanced Integration
+**SystemDiagnostics Class:**
+- Comprehensive system health monitoring with uptime tracking
+- Boot count and unexpected reboot detection (crash detection using RTC memory)
+- Component failure history and recovery attempt tracking
+- Performance metrics (WiFi signal quality average, sensor reading stability)
+- Persistent diagnostics data stored in ESP32 flash memory (Preferences API)
+
+**Automatic Error Recovery:**
+- Light sensor: I2C bus reset and sensor reinitialization
+- Time manager: Force NTP resync for time validation failures
+- WiFi manager: Enhanced connection tracking (existing auto-reconnection)
+- Recovery cooldown periods (60 seconds) to prevent rapid retry loops
+- Comprehensive recovery logging and success rate tracking
+
+**Enhanced Component Tracking:**
+- WiFi: Connection success rate and attempt counting
+- Time: Sync success rate and failed sync tracking
+- Sensor: Consecutive failure counting for recovery triggering
+- All components: Automatic recovery when failures detected by PlantController
+
 ### ✅ Integration & System Features
 - **Comprehensive Status Display**: Real-time system health monitoring
-- **Error Recovery**: Graceful handling of component failures
+- **Automatic Error Recovery**: Self-healing component reinitialization
+- **System Diagnostics**: Uptime, boot count, failure history, performance metrics
 - **Safety-First Design**: Defaults to safe states during errors
 - **Rich Debugging**: Detailed logging of all decisions and state changes
 - **Visual Status Indicators**: Emoji-based status for quick recognition
@@ -167,18 +189,7 @@ src/
 
 ## Upcoming Features
 
-### Phase 5: Advanced Integration (Planned)
-- **Advanced Error Recovery**: Automatic component reinitialization when failures detected
-  - I2C bus reset and sensor reinitialization
-  - WiFi reconnection with backoff strategies
-  - Component health monitoring with automatic recovery attempts
-- **System Diagnostics**: Enhanced logging and health reporting
-  - Uptime tracking and crash detection
-  - Component failure history
-  - Performance metrics (WiFi signal, sensor stability)
-- **Persistent Logging**: SD card or flash-based event logging for troubleshooting
-
-### Phase 6: User Interface & Configuration (Future)
+### Phase 6: User Interface & Configuration (Planned)
 - **Configuration Persistence**: Save settings to ESP32 flash memory (Preferences API)
   - WiFi credentials storage
   - Light schedules and thresholds

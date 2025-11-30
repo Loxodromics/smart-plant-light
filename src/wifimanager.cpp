@@ -18,6 +18,7 @@ WiFiManager::WiFiManager(const char* ssid, const char* password)
 	, connectionTimeout(WIFI_TIMEOUT_MS)
 	, reconnectInterval(30000) /// We start with 30 second intervals
 	, connectionAttempts(0)
+	, successfulConnections(0)
 {
 	/// We initialize member variables in constructor for clean state
 }
@@ -78,14 +79,15 @@ bool WiFiManager::connect() {
 		this->currentStatus = WiFiStatus::Connected;
 		this->lastSuccessfulConnection = millis();
 		this->reconnectInterval = 30000; /// We reset to base interval on success
-		
+		this->successfulConnections++; /// Track successful connection
+
 		Serial.println("WiFiManager: ✓ Connected successfully");
 		Serial.print("IP address: ");
 		Serial.println(WiFi.localIP());
 		Serial.print("Signal strength: ");
 		Serial.print(WiFi.RSSI());
 		Serial.println(" dBm");
-		
+
 		return true;
 	} else {
 		this->currentStatus = WiFiStatus::Failed;
@@ -142,6 +144,17 @@ void WiFiManager::forceReconnect() {
 
 unsigned long WiFiManager::getConnectionAttempts() const {
 	return this->connectionAttempts;
+}
+
+unsigned long WiFiManager::getSuccessfulConnections() const {
+	return this->successfulConnections;
+}
+
+float WiFiManager::getConnectionSuccessRate() const {
+	if (this->connectionAttempts == 0) {
+		return 1.0f; /// No attempts yet
+	}
+	return (float)this->successfulConnections / (float)this->connectionAttempts;
 }
 
 bool WiFiManager::shouldAttemptReconnect() const {

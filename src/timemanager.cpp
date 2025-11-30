@@ -16,6 +16,7 @@ TimeManager::TimeManager(const char* ntpServer, int timezoneOffsetHours)
 	, lastSyncAttempt(0)
 	, lastSuccessfulSync(0)
 	, syncCount(0)
+	, failedSyncCount(0)
 	, timeValid(false)
 {
 	/// We create the NTP client with our timezone offset
@@ -74,15 +75,16 @@ bool TimeManager::syncTime() {
 		this->lastSuccessfulSync = millis();
 		this->syncCount++;
 		this->timeValid = true;
-		
+
 		Serial.println("TimeManager: ✓ Time sync successful");
 		Serial.print("Current time: ");
 		Serial.println(this->getCurrentTimeString());
 		Serial.print("Current date: ");
 		Serial.println(this->getCurrentDateString());
-		
+
 		return true;
 	} else {
+		this->failedSyncCount++;
 		Serial.println("TimeManager: ✗ Time sync failed");
 		/// We don't invalidate existing time on failure - keep using last known time
 		return false;
@@ -197,8 +199,35 @@ bool TimeManager::isTimeInRangeWithDayBoundary(int startHour, int endHour, int c
 	if (startHour <= endHour) {
 		return currentHour >= startHour && currentHour < endHour;
 	}
-	
+
 	/// We handle ranges that cross midnight (e.g., 22 to 6)
 	/// This means lights are on from 22:00 to 06:00 (overnight)
 	return currentHour >= startHour || currentHour < endHour;
+}
+
+unsigned long TimeManager::getFailedSyncCount() const {
+	return this->failedSyncCount;
+}
+
+float TimeManager::getSyncSuccessRate() const {
+	unsigned long totalAttempts = this->syncCount + this->failedSyncCount;
+	if (totalAttempts == 0) {
+		return 1.0f; /// No attempts yet
+	}
+	return (float)this->syncCount / (float)totalAttempts;
+}
+
+bool TimeManager::attemptRecovery() {
+	Serial.println("TimeManager: Attempting recovery...");
+
+	/// We force an immediate sync attempt
+	bool success = this->syncTime();
+
+	if (success) {
+		Serial.println("TimeManager: ✓ Recovery successful");
+		return true;
+	} else {
+		Serial.println("TimeManager: ✗ Recovery failed");
+		return false;
+	}
 }

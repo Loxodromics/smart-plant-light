@@ -1,6 +1,6 @@
 ///
 /// LightSensor Implementation
-/// 
+///
 /// We implement a robust light sensing system with averaging to smooth
 /// out rapid fluctuations that could cause the plant lights to flicker
 /// on and off inappropriately.
@@ -8,8 +8,9 @@
 
 #include "lightsensor.h"
 #include "config.h"
+#include <Wire.h>
 
-LightSensor::LightSensor() 
+LightSensor::LightSensor()
 	: bufferSize(SENSOR_SAMPLES)
 	, bufferIndex(0)
 	, bufferFull(false)
@@ -18,6 +19,7 @@ LightSensor::LightSensor()
 	, readingCount(0)
 	, lastReadingTime(0)
 	, sensorInitialized(false)
+	, consecutiveFailures(0)
 {
 	/// We allocate memory for the averaging buffer
 	/// Using dynamic allocation allows us to configure buffer size at compile time
@@ -65,29 +67,32 @@ bool LightSensor::begin() {
 bool LightSensor::updateReading() {
 	if (!this->sensorInitialized) {
 		Serial.println("LightSensor: Sensor not initialized");
+		this->consecutiveFailures++;
 		return false;
 	}
-	
+
 	/// We read the ambient light value in lux
 	float newReading = this->veml.readLux();
-	
+
 	/// We validate the reading is reasonable
 	/// VEML7700 returns NaN or very large values on error
 	if (isnan(newReading) || newReading < 0 || newReading > 120000) {
 		Serial.print("LightSensor: Invalid reading detected: ");
 		Serial.println(newReading);
+		this->consecutiveFailures++;
 		return false;
 	}
-	
+
 	/// We store the raw reading for diagnostics
 	this->lastRawLux = newReading;
 	this->lastReadingTime = millis();
 	this->readingCount++;
-	
+	this->consecutiveFailures = 0; /// Reset on successful reading
+
 	/// We add the new reading to our averaging buffer
 	this->addToBuffer(newReading);
 	this->calculateAverage();
-	
+
 	return true;
 }
 
@@ -155,13 +160,54 @@ void LightSensor::calculateAverage() {
 void LightSensor::addToBuffer(float newReading) {
 	/// We add the new reading to the circular buffer
 	this->readingBuffer[this->bufferIndex] = newReading;
-	
+
 	/// We advance the buffer index
 	this->bufferIndex++;
-	
+
 	/// We handle circular buffer wraparound
 	if (this->bufferIndex >= this->bufferSize) {
 		this->bufferIndex = 0;
 		this->bufferFull = true;
 	}
+}
+
+bool LightSensor::attemptRecovery() {
+	Serial.println("LightSensor: Attempting recovery...");
+
+	/// We reset the I2C bus first
+	this->resetI2CBus();
+
+	/// We mark sensor as uninitialized
+	this->sensorInitialized = false;
+
+	/// We wait for bus to stabilize
+	delay(100);
+
+	/// We attempt to reinitialize the sensor
+	if (this->begin()) {
+		Serial.println("LightSensor: ✓ Recovery successful");
+		this->consecutiveFailures = 0;
+		return true;
+	} else {
+		Serial.println("LightSensor: ✗ Recovery failed");
+		return false;
+	}
+}
+
+unsigned long LightSensor::getConsecutiveFailures() const {
+	return this->consecutiveFailures;
+}
+
+void LightSensor::resetI2CBus() {
+	Serial.println("LightSensor: Resetting I2C bus...");
+
+	/// We perform a software reset of the I2C bus
+	/// This clears any stuck states or lockups
+	extern TwoWire Wire;
+	Wire.end();
+	delay(50);
+	Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+	delay(50);
+
+	Serial.println("LightSensor: I2C bus reset complete");
 }

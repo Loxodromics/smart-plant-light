@@ -62,6 +62,16 @@ public:
 	/// Get number of successful syncs since startup
 	[[nodiscard]] unsigned long getSyncCount() const;
 
+	/// Get number of failed sync attempts
+	[[nodiscard]] unsigned long getFailedSyncCount() const;
+
+	/// Get sync success rate (0.0 to 1.0)
+	[[nodiscard]] float getSyncSuccessRate() const;
+
+	/// Attempt recovery from time sync failure
+	/// We force immediate resync and clear stale state
+	[[nodiscard]] bool attemptRecovery();
+
 private:
 	WiFiUDP ntpUDP;
 	NTPClient* ntpClient;
@@ -72,6 +82,7 @@ private:
 	unsigned long lastSyncAttempt;
 	unsigned long lastSuccessfulSync;
 	unsigned long syncCount;
+	unsigned long failedSyncCount;
 	bool timeValid;
 	
 	/// Check if enough time has passed for next sync attempt
