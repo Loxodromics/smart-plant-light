@@ -82,7 +82,7 @@ public:
 
 	/// Update configuration from ConfigManager
 	/// We allow runtime configuration changes without recompiling
-	void updateConfiguration(int startHour, int endHour, float thresholdLux);
+	void updateConfiguration(int startHour, int endHour, float thresholdLux, float hysteresisLux);
 
 private:
 	/// Component references
@@ -106,6 +106,7 @@ private:
 	int scheduleStartHour;
 	int scheduleEndHour;
 	float lightThresholdLux;
+	float hysteresisLux;
 
 	/// Recovery tracking
 	unsigned long lastSensorRecoveryAttempt;

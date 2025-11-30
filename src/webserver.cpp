@@ -109,6 +109,12 @@ void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
         Serial.printf("  Threshold: %.1f lux\n", threshold);
     }
 
+    if (request->hasParam("hysteresis", true)) {
+        float hysteresis = request->getParam("hysteresis", true)->value().toFloat();
+        this->configManager->setHysteresis(hysteresis);
+        Serial.printf("  Hysteresis: %.1f lux\n", hysteresis);
+    }
+
     if (request->hasParam("timezone", true)) {
         int8_t timezone = request->getParam("timezone", true)->value().toInt();
         this->configManager->setTimezone(timezone);
@@ -366,6 +372,14 @@ String PlantWebServer::generateSettingsSection() {
     html += String(config.lightThresholdLux, 1);
     html += R"(" required>
                 <div class="input-hint">Turn lights on when below this value</div>
+            </div>
+
+            <div class="form-group">
+                <label for="hysteresis">Hysteresis (lux)</label>
+                <input type="number" id="hysteresis" name="hysteresis" min="0" max="100" step="0.1" value=")";
+    html += String(config.hysteresisLux, 1);
+    html += R"(" required>
+                <div class="input-hint">Dead band to prevent rapid switching (0 = disabled)</div>
             </div>
 
             <div class="form-group">
