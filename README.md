@@ -168,16 +168,28 @@ src/
 ## Upcoming Features
 
 ### Phase 5: Advanced Integration (Planned)
-- **Watchdog Timer**: System reliability and automatic recovery
-- **Configuration Persistence**: Save settings to ESP32 flash memory
-- **Over-the-Air (OTA) Updates**: Remote firmware updates via WiFi
-- **Advanced Error Recovery**: Automatic component reinitialization
+- **Advanced Error Recovery**: Automatic component reinitialization when failures detected
+  - I2C bus reset and sensor reinitialization
+  - WiFi reconnection with backoff strategies
+  - Component health monitoring with automatic recovery attempts
+- **System Diagnostics**: Enhanced logging and health reporting
+  - Uptime tracking and crash detection
+  - Component failure history
+  - Performance metrics (WiFi signal, sensor stability)
+- **Persistent Logging**: SD card or flash-based event logging for troubleshooting
 
-### Phase 6: User Interface (Future)
+### Phase 6: User Interface & Configuration (Future)
+- **Configuration Persistence**: Save settings to ESP32 flash memory (Preferences API)
+  - WiFi credentials storage
+  - Light schedules and thresholds
+  - Sensor calibration values
+  - Settings survive reboots and power cycles
 - **Web Interface**: Browser-based configuration and monitoring
-- **Real-time Graphs**: Light level and relay state visualization
-- **Mobile Responsive**: Smartphone-friendly interface
-- **Configuration API**: RESTful API for external integration
+  - Real-time system status dashboard
+  - Editable configuration forms (schedules, thresholds, WiFi)
+  - Light level and relay state visualization
+  - Mobile-responsive design for smartphone access
+- **REST API**: Programmatic access for external integration
 
 ### Phase 7: Home Automation Integration (Future)
 - **MQTT Support**: Integration with Home Assistant, OpenHAB
@@ -239,10 +251,10 @@ src/
    - Validate relay module reliability
 
 ### Development Priorities
-1. **Immediate**: Resolve relay reliability issues
-2. **Short-term**: Add watchdog timer and error recovery
-3. **Medium-term**: Web interface for remote monitoring
-4. **Long-term**: Home automation integration
+1. **Current**: System is stable and operational
+2. **Short-term**: Advanced error recovery and diagnostics (Phase 5)
+3. **Medium-term**: Web interface and configuration persistence (Phase 6)
+4. **Long-term**: Home automation integration (Phase 7)
 
 ### Code Organization
 - **Modular Design**: Each component in separate files
