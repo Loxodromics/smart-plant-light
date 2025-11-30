@@ -85,7 +85,7 @@ void setup() {
 
 	/// We update plant controller with runtime configuration
 	const PlantLightConfig& config = configManager->getConfig();
-	plantController->updateConfiguration(config.lightStartHour, config.lightEndHour, config.lightThresholdLux);
+	plantController->updateConfiguration(config.lightStartHour, config.lightEndHour, config.lightThresholdLux, config.hysteresisLux);
 
 	/// We initialize web server if WiFi is connected
 	if (wifiManager->isConnected()) {
@@ -253,6 +253,10 @@ void displaySystemConfiguration() {
 
 	Serial.print("💡 Light threshold: ");
 	Serial.print(config.lightThresholdLux);
+	Serial.println(" lux");
+
+	Serial.print("⚡ Hysteresis: ");
+	Serial.print(config.hysteresisLux);
 	Serial.println(" lux");
 
 	Serial.print("🌐 Timezone: UTC");

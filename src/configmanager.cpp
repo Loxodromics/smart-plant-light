@@ -59,6 +59,9 @@ void ConfigManager::loadConfiguration() {
     /// Load sensor threshold
     this->config.lightThresholdLux = this->preferences.getFloat("sensor.thresh", LIGHT_THRESHOLD_LUX);
 
+    /// Load hysteresis
+    this->config.hysteresisLux = this->preferences.getFloat("sensor.hyster", 15.0);  /// Default 15 lux
+
     /// Load timezone
     this->config.timezoneOffsetHours = this->preferences.getChar("tz.offset", TIMEZONE_OFFSET_HOURS);
 
@@ -88,6 +91,9 @@ bool ConfigManager::saveConfiguration() {
     /// Save sensor threshold
     this->preferences.putFloat("sensor.thresh", this->config.lightThresholdLux);
 
+    /// Save hysteresis
+    this->preferences.putFloat("sensor.hyster", this->config.hysteresisLux);
+
     /// Save timezone
     this->preferences.putChar("tz.offset", this->config.timezoneOffsetHours);
 
@@ -112,6 +118,9 @@ void ConfigManager::resetToDefaults() {
     /// Set default threshold
     this->config.lightThresholdLux = LIGHT_THRESHOLD_LUX;
 
+    /// Set default hysteresis
+    this->config.hysteresisLux = 15.0;  /// 15 lux dead band
+
     /// Set default timezone
     this->config.timezoneOffsetHours = TIMEZONE_OFFSET_HOURS;
 
@@ -120,7 +129,7 @@ void ConfigManager::resetToDefaults() {
 }
 
 bool ConfigManager::isValid() const {
-    return validateSchedule() && validateThreshold() && validateTimezone();
+    return validateSchedule() && validateThreshold() && validateHysteresis() && validateTimezone();
 }
 
 const PlantLightConfig& ConfigManager::getConfig() const {
@@ -148,6 +157,10 @@ void ConfigManager::setLightThreshold(float thresholdLux) {
     this->config.lightThresholdLux = thresholdLux;
 }
 
+void ConfigManager::setHysteresis(float hysteresisLux) {
+    this->config.hysteresisLux = hysteresisLux;
+}
+
 void ConfigManager::setTimezone(int8_t offsetHours) {
     this->config.timezoneOffsetHours = offsetHours;
 }
@@ -158,6 +171,7 @@ void ConfigManager::printConfiguration() const {
     Serial.printf("  WiFi Password: %s\n", strlen(this->config.wifiPassword) > 0 ? "********" : "(empty)");
     Serial.printf("  Schedule: %02d:00 - %02d:00\n", this->config.lightStartHour, this->config.lightEndHour);
     Serial.printf("  Light Threshold: %.1f lux\n", this->config.lightThresholdLux);
+    Serial.printf("  Hysteresis: %.1f lux\n", this->config.hysteresisLux);
     Serial.printf("  Timezone: UTC%+d\n", this->config.timezoneOffsetHours);
     Serial.printf("  Config Version: %u\n", this->config.version);
 }
@@ -184,7 +198,17 @@ bool ConfigManager::validateThreshold() const {
     return true;
 }
 
-bool ConfigManager::validateTimezone() const {
+bool ConfigManager::validateHysteresis() const {
+    /// Hysteresis must be non-negative and reasonable
+    /// Maximum 100 lux is a reasonable upper bound
+    if (this->config.hysteresisLux < 0.0 || this->config.hysteresisLux > 100.0) {
+        Serial.printf("❌ Invalid hysteresis: %.1f lux (must be 0-100)\n", this->config.hysteresisLux);
+        return false;
+    }
+    return true;
+}
+
+bool ConfigManager::validateTimezone() const{
     /// Timezone offset must be within valid range
     /// UTC-12 (Baker Island) to UTC+14 (Kiribati)
     if (this->config.timezoneOffsetHours < -12 || this->config.timezoneOffsetHours > 14) {

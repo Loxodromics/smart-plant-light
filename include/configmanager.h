@@ -18,6 +18,9 @@ struct PlantLightConfig {
     /// Light sensor threshold
     float lightThresholdLux;
 
+    /// Hysteresis (dead band) to prevent relay chattering
+    float hysteresisLux;  /// 0-100 lux
+
     /// Timezone offset from UTC
     int8_t timezoneOffsetHours;  /// -12 to +14
 
@@ -59,6 +62,7 @@ public:
     void setWiFiCredentials(const char* ssid, const char* password);
     void setSchedule(uint8_t startHour, uint8_t endHour);
     void setLightThreshold(float thresholdLux);
+    void setHysteresis(float hysteresisLux);
     void setTimezone(int8_t offsetHours);
 
     /// Print current configuration to serial (for debugging)
@@ -77,6 +81,7 @@ private:
     /// Validate individual configuration values
     [[nodiscard]] bool validateSchedule() const;
     [[nodiscard]] bool validateThreshold() const;
+    [[nodiscard]] bool validateHysteresis() const;
     [[nodiscard]] bool validateTimezone() const;
 };
 

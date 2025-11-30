@@ -29,6 +29,7 @@ PlantController::PlantController(WiFiManager* wifiManager, TimeManager* timeMana
 	, scheduleStartHour(LIGHT_START_HOUR)
 	, scheduleEndHour(LIGHT_END_HOUR)
 	, lightThresholdLux(LIGHT_THRESHOLD_LUX)
+	, hysteresisLux(15.0)  /// Default 15 lux dead band
 	, lastSensorRecoveryAttempt(0)
 	, lastTimeRecoveryAttempt(0)
 	, recoveryInterval(60000)  /// 1 minute cooldown between recovery attempts
@@ -147,11 +148,12 @@ void PlantController::setAutomaticControl(bool enabled) {
 	}
 }
 
-void PlantController::updateConfiguration(int startHour, int endHour, float thresholdLux) {
+void PlantController::updateConfiguration(int startHour, int endHour, float thresholdLux, float hysteresisLux) {
 	/// We update the configuration with new values
 	this->scheduleStartHour = startHour;
 	this->scheduleEndHour = endHour;
 	this->lightThresholdLux = thresholdLux;
+	this->hysteresisLux = hysteresisLux;
 
 	Serial.println("PlantController: Configuration updated");
 	Serial.print("  Schedule: ");
@@ -161,6 +163,9 @@ void PlantController::updateConfiguration(int startHour, int endHour, float thre
 	Serial.println(":00");
 	Serial.print("  Light threshold: ");
 	Serial.print(this->lightThresholdLux);
+	Serial.println(" lux");
+	Serial.print("  Hysteresis: ");
+	Serial.print(this->hysteresisLux);
 	Serial.println(" lux");
 
 	/// We force immediate re-evaluation with new settings
@@ -204,8 +209,24 @@ bool PlantController::isWithinSchedule() const {
 }
 
 bool PlantController::isAmbientLightLow() const {
-	/// We use the light sensor's threshold comparison
-	return this->lightSensor->isBelowThreshold(this->lightThresholdLux);
+	/// We implement hysteresis to prevent relay chattering
+	/// when ambient light hovers around the threshold
+	float currentLux = this->lightSensor->getAverageLux();
+	bool relayCurrentlyOn = this->relayController->getRelayState();
+
+	/// Calculate upper and lower thresholds
+	float upperThreshold = this->lightThresholdLux + this->hysteresisLux;
+	float lowerThreshold = this->lightThresholdLux - this->hysteresisLux;
+
+	if (relayCurrentlyOn) {
+		/// Relay is ON - keep lights on unless we exceed upper threshold
+		/// This prevents turning off during small light fluctuations
+		return currentLux < upperThreshold;
+	} else {
+		/// Relay is OFF - turn lights on only if below lower threshold
+		/// This prevents turning on during small light fluctuations
+		return currentLux < lowerThreshold;
+	}
 }
 
 bool PlantController::shouldRelayBeOn() const {
