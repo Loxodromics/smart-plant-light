@@ -46,10 +46,12 @@ private:
     /// HTTP request handlers
     void handleRoot(AsyncWebServerRequest* request);
     void handleSave(AsyncWebServerRequest* request);
+    void handleOverride(AsyncWebServerRequest* request);
 
     /// HTML page generation
     String generateHTML();
     String generateStatusSection();
+    String generateOverrideSection();
     String generateSettingsSection();
 
     /// Helper to get current time as string

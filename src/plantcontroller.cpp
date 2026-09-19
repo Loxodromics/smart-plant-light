@@ -24,7 +24,7 @@ PlantController::PlantController(WiFiManager* wifiManager, TimeManager* timeMana
 	, lastUpdateTime(0)
 	, decisionCount(0)
 	, relayChanges(0)
-	, automaticControlEnabled(true)
+	, manualOverride(ManualOverride::Auto)
 	, updateInterval(CHECK_INTERVAL_MS)
 	, scheduleStartHour(LIGHT_START_HOUR)
 	, scheduleEndHour(LIGHT_END_HOUR)
@@ -55,8 +55,8 @@ void PlantController::begin() {
 	Serial.print(this->updateInterval / 1000);
 	Serial.println(" seconds");
 	
-	Serial.print("Automatic control: ");
-	Serial.println(this->automaticControlEnabled ? "ENABLED" : "DISABLED");
+	Serial.print("Manual override: ");
+	Serial.println(this->getManualOverrideString(this->manualOverride));
 	
 	/// We perform initial evaluation
 	this->forceUpdate();
@@ -72,11 +72,6 @@ void PlantController::update() {
 	}
 	
 	this->lastUpdateTime = currentTime;
-	
-	/// We skip updates if automatic control is disabled
-	if (!this->automaticControlEnabled) {
-		return;
-	}
 
 	/// We attempt component recovery if needed
 	this->attemptComponentRecovery();
@@ -136,16 +131,19 @@ unsigned long PlantController::getRelayChanges() const {
 	return this->relayChanges;
 }
 
-void PlantController::setAutomaticControl(bool enabled) {
-	this->automaticControlEnabled = enabled;
-	Serial.print("PlantController: Automatic control ");
-	Serial.println(enabled ? "ENABLED" : "DISABLED");
+void PlantController::setManualOverride(ManualOverride mode) {
+	this->manualOverride = mode;
 
-	if (!enabled) {
-		/// We turn off lights when disabling automatic control for safety
-		Serial.println("PlantController: Turning off lights (automatic control disabled)");
-		this->relayController->setRelayState(false);
-	}
+	Serial.print("PlantController: Manual override set to ");
+	Serial.println(this->getManualOverrideString(mode));
+
+	/// We re-evaluate immediately so the new mode takes effect without
+	/// waiting for the next scheduled update
+	this->forceUpdate();
+}
+
+ManualOverride PlantController::getManualOverride() const {
+	return this->manualOverride;
 }
 
 void PlantController::updateConfiguration(int startHour, int endHour, float thresholdLux, float hysteresisLux) {
@@ -172,16 +170,31 @@ void PlantController::updateConfiguration(int startHour, int endHour, float thre
 	this->forceUpdate();
 }
 
-bool PlantController::isAutomaticControlEnabled() const {
-	return this->automaticControlEnabled;
-}
-
 ControlDecision PlantController::analyzeConditions(ControlReason& reason) const {
+	/// We check manual override first - it bypasses schedule/light logic
+	/// entirely so it keeps working even if time sync or the sensor is
+	/// down, but still respects the relay's own switching safety interval
+	if (this->manualOverride != ManualOverride::Auto) {
+		if (!this->relayController->canSwitchRelay()) {
+			reason = ControlReason::RelayBusy;
+			return ControlDecision::WaitForData;
+		}
+
+		bool wantOn = (this->manualOverride == ManualOverride::ForceOn);
+		reason = wantOn ? ControlReason::ManualOverrideOn : ControlReason::ManualOverrideOff;
+
+		bool relayCurrentlyOn = this->relayController->getRelayState();
+		if (relayCurrentlyOn == wantOn) {
+			return ControlDecision::KeepCurrent;
+		}
+		return wantOn ? ControlDecision::TurnOn : ControlDecision::TurnOff;
+	}
+
 	/// We first validate that all components are working
 	if (!this->validateComponents(reason)) {
 		return ControlDecision::WaitForData;
 	}
-	
+
 	/// We check if we're within the scheduled time window
 	if (!this->isWithinSchedule()) {
 		reason = ControlReason::OutOfSchedule;
@@ -314,7 +327,18 @@ const char* PlantController::getReasonString(ControlReason reason) const {
 		case ControlReason::NoValidTime: return "No valid time";
 		case ControlReason::SensorFailure: return "Sensor failure";
 		case ControlReason::RelayBusy: return "Relay busy";
+		case ControlReason::ManualOverrideOn: return "Manual override: ON";
+		case ControlReason::ManualOverrideOff: return "Manual override: OFF";
 		default: return "Unknown reason";
+	}
+}
+
+const char* PlantController::getManualOverrideString(ManualOverride mode) const {
+	switch (mode) {
+		case ManualOverride::Auto: return "AUTO";
+		case ManualOverride::ForceOn: return "FORCE ON";
+		case ManualOverride::ForceOff: return "FORCE OFF";
+		default: return "UNKNOWN";
 	}
 }
 

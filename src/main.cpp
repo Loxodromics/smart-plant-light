@@ -16,6 +16,7 @@
 #include "systemdiagnostics.h"
 #include "configmanager.h"
 #include "webserver.h"
+#include "watchdogmanager.h"
 #include "config.h"
 
 /// Component instances
@@ -27,6 +28,7 @@ RelayController* relayController;
 PlantController* plantController;
 SystemDiagnostics* diagnostics;
 PlantWebServer* webServer;
+WatchdogManager* watchdogManager;
 
 void displaySystemStatus();
 void displayTimeStatus();
@@ -78,6 +80,18 @@ void setup() {
 	
 	/// We wait for essential components to be ready
 	waitForSystemReady();
+
+	/// We subscribe to the hardware watchdog only now, after the boot-time
+	/// WiFi/time wait loops above - those already use bounded, self-timing-out
+	/// loops (up to ~90s combined), and subscribing before them would
+	/// false-trigger the watchdog on a slow but otherwise healthy boot
+	Serial.println("🐕 Initializing Watchdog Manager...");
+	watchdogManager = new WatchdogManager(WATCHDOG_TIMEOUT_MS);
+	watchdogManager->begin();
+	if (watchdogManager->wasLastResetAFault()) {
+		diagnostics->recordFailure(ComponentType::System, watchdogManager->getLastResetReasonString());
+	}
+	Serial.println();
 
 	/// We initialize the main plant controller with diagnostics
 	plantController = new PlantController(wifiManager, timeManager, lightSensor, relayController, diagnostics);
@@ -140,7 +154,12 @@ void loop() {
 
 	/// We run the main plant control logic
 	plantController->update();
-	
+
+	/// We feed the watchdog last - only a loop iteration that actually
+	/// completed reaches this, so a genuine hang (e.g. a stuck I2C read)
+	/// stops the feed and the chip resets itself
+	watchdogManager->feed();
+
 	/// We display comprehensive status periodically
 	if (currentTime - lastStatusDisplay >= displayInterval) {
 		lastStatusDisplay = currentTime;
@@ -269,6 +288,11 @@ void displaySystemConfiguration() {
 
 	Serial.print("🔌 Relay pin: GPIO");
 	Serial.println(RELAY_PIN);
+
+	Serial.print("🐕 Watchdog: active, ");
+	Serial.print(WATCHDOG_TIMEOUT_MS / 1000);
+	Serial.print("s timeout | Last reset: ");
+	Serial.println(watchdogManager->getLastResetReasonString());
 }
 
 void displayFullSystemStatus() {
@@ -389,6 +413,10 @@ void displayControlStatus() {
 			case ControlReason::InScheduleBright:
 				Serial.print("in schedule + bright");
 				break;
+			case ControlReason::ManualOverrideOn:
+			case ControlReason::ManualOverrideOff:
+				Serial.print("manual override");
+				break;
 			default:
 				Serial.print("system issue");
 				break;
@@ -411,6 +439,7 @@ void cleanup() {
 		diagnostics = nullptr;
 	}
 	if (webServer) { delete webServer; webServer = nullptr; }
+	if (watchdogManager) { delete watchdogManager; watchdogManager = nullptr; }
 	if (plantController) { delete plantController; plantController = nullptr; }
 	if (relayController) { delete relayController; relayController = nullptr; }
 	if (lightSensor) { delete lightSensor; lightSensor = nullptr; }

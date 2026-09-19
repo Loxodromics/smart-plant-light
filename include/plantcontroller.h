@@ -30,7 +30,15 @@ enum class ControlReason {
 	InScheduleBright,    /// In schedule but ambient light is sufficient
 	NoValidTime,         /// Time synchronization not available
 	SensorFailure,       /// Light sensor not working
-	RelayBusy           /// Relay cannot switch (safety interval)
+	RelayBusy,           /// Relay cannot switch (safety interval)
+	ManualOverrideOn,    /// Manually forced on
+	ManualOverrideOff    /// Manually forced off
+};
+
+enum class ManualOverride {
+	Auto,      /// Automatic schedule + light-level control (default)
+	ForceOn,   /// Manually forced ON regardless of schedule/light level
+	ForceOff   /// Manually forced OFF regardless of schedule/light level
 };
 
 class PlantController {
@@ -69,12 +77,16 @@ public:
 	/// Get number of actual relay state changes made
 	[[nodiscard]] unsigned long getRelayChanges() const;
 	
-	/// Enable or disable automatic control
-	/// We allow manual override when needed
-	void setAutomaticControl(bool enabled);
-	
-	/// Check if automatic control is currently enabled
-	[[nodiscard]] bool isAutomaticControlEnabled() const;
+	/// Set manual override mode (Auto / ForceOn / ForceOff)
+	/// We use this for the software on/off switch - it bypasses the
+	/// schedule and light-level logic entirely, but still respects the
+	/// relay's minimum switch interval. Not persisted - always resets to
+	/// Auto on reboot, matching the rest of the system's safety-first
+	/// "known-good state after any reset" pattern
+	void setManualOverride(ManualOverride mode);
+
+	/// Get the current manual override mode
+	[[nodiscard]] ManualOverride getManualOverride() const;
 
 	/// Attempt to recover from component failures
 	/// We check for failures and trigger recovery attempts
@@ -99,7 +111,7 @@ private:
 	unsigned long lastUpdateTime;
 	unsigned long decisionCount;
 	unsigned long relayChanges;
-	bool automaticControlEnabled;
+	ManualOverride manualOverride;
 	unsigned long updateInterval;
 	
 	/// Configuration
@@ -132,6 +144,9 @@ private:
 	
 	/// Get descriptive string for decision reason
 	[[nodiscard]] const char* getReasonString(ControlReason reason) const;
+
+	/// Get descriptive string for manual override mode
+	[[nodiscard]] const char* getManualOverrideString(ManualOverride mode) const;
 };
 
 #endif /// PLANTCONTROLLER_H

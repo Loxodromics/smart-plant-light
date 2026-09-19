@@ -41,6 +41,10 @@ void PlantWebServer::begin() {
         this->handleSave(request);
     });
 
+    this->server->on("/override", HTTP_POST, [this](AsyncWebServerRequest* request) {
+        this->handleOverride(request);
+    });
+
     /// Start server
     this->server->begin();
     this->running = true;
@@ -169,6 +173,22 @@ void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
     }
 }
 
+void PlantWebServer::handleOverride(AsyncWebServerRequest* request) {
+    if (request->hasParam("mode", true)) {
+        String mode = request->getParam("mode", true)->value();
+
+        if (mode == "on") {
+            this->plantController->setManualOverride(ManualOverride::ForceOn);
+        } else if (mode == "off") {
+            this->plantController->setManualOverride(ManualOverride::ForceOff);
+        } else {
+            this->plantController->setManualOverride(ManualOverride::Auto);
+        }
+    }
+
+    request->redirect("/");
+}
+
 String PlantWebServer::generateHTML() {
     String html = R"(
 <!DOCTYPE html>
@@ -233,6 +253,13 @@ String PlantWebServer::generateHTML() {
             background: #f8d7da;
             color: #721c24;
         }
+        .override-form {
+            display: inline-block;
+            width: 32%;
+        }
+        .override-active {
+            background: #2c3e50 !important;
+        }
         .form-group {
             margin-bottom: 15px;
         }
@@ -286,6 +313,7 @@ String PlantWebServer::generateHTML() {
 )";
 
     html += generateStatusSection();
+    html += generateOverrideSection();
     html += generateSettingsSection();
 
     html += R"(
@@ -337,6 +365,51 @@ String PlantWebServer::generateStatusSection() {
     html += R"( dBm</div>
             </div>
         </div>
+    </div>
+)";
+
+    return html;
+}
+
+String PlantWebServer::generateOverrideSection() {
+    ManualOverride mode = this->plantController->getManualOverride();
+
+    String autoClass = (mode == ManualOverride::Auto) ? "override-active" : "";
+    String onClass = (mode == ManualOverride::ForceOn) ? "override-active" : "";
+    String offClass = (mode == ManualOverride::ForceOff) ? "override-active" : "";
+
+    String modeLabel;
+    switch (mode) {
+        case ManualOverride::ForceOn: modeLabel = "🔒 Forced ON"; break;
+        case ManualOverride::ForceOff: modeLabel = "🔒 Forced OFF"; break;
+        default: modeLabel = "🤖 Automatic"; break;
+    }
+
+    String html = R"(
+    <div class="container">
+        <h2>🔘 Manual Override</h2>
+        <p>Current mode: <strong>)";
+    html += modeLabel;
+    html += R"(</strong></p>
+        <form action="/override" method="POST" class="override-form">
+            <input type="hidden" name="mode" value="auto">
+            <button type="submit" class=")";
+    html += autoClass;
+    html += R"(">🤖 Auto</button>
+        </form>
+        <form action="/override" method="POST" class="override-form">
+            <input type="hidden" name="mode" value="on">
+            <button type="submit" class=")";
+    html += onClass;
+    html += R"(">💡 Force ON</button>
+        </form>
+        <form action="/override" method="POST" class="override-form">
+            <input type="hidden" name="mode" value="off">
+            <button type="submit" class=")";
+    html += offClass;
+    html += R"(">🌙 Force OFF</button>
+        </form>
+        <div class="input-hint">Overrides the schedule and light sensor until set back to Auto - resets to Auto on reboot</div>
     </div>
 )";
 

@@ -51,9 +51,15 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 
 **Hardware Abstraction Layer:**
 - **RelayController**: Safe relay switching with anti-flicker protection
-- **LightSensor**: VEML7700 I2C sensor with averaging buffer
+- **LightSensor**: VEML7700 I2C sensor with averaging buffer; self-heals via `attemptRecovery()` after repeated consecutive read failures (I2C bus reset + sensor reinit)
 - **WiFiManager**: Robust WiFi connection with auto-reconnection
 - **TimeManager**: NTP synchronization with timezone support
+- **WatchdogManager**: Hardware task watchdog (`esp_task_wdt`) that force-resets the board if `loop()` ever hangs (e.g. a stuck I2C read); only subscribed after the boot-time WiFi/time wait loops complete, to avoid false-triggering on a slow but healthy boot
+
+**System-Level Components:**
+- **SystemDiagnostics**: Boot count, unexpected-reboot detection (RTC crash marker), per-component failure/recovery history, WiFi/sensor performance metrics, persisted via the ESP32 Preferences API
+- **ConfigManager**: Runtime configuration (WiFi credentials, schedule, threshold, hysteresis, timezone) persisted via Preferences, with fallback to `config.h` defaults
+- **PlantWebServer**: Single-page status/config UI served over `ESPAsyncWebServer` when WiFi is connected - has no authentication and echoes the WiFi password into the settings form, so treat it as trusted-LAN-only
 
 ### Key Design Patterns
 
@@ -68,15 +74,16 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 ## Configuration
 
 **Critical Settings** (`include/config.h`):
-- `WIFI_SSID` / `WIFI_PASSWORD`: Network credentials
-- `LIGHT_START_HOUR` / `LIGHT_END_HOUR`: Schedule (supports overnight schedules)
-- `LIGHT_THRESHOLD_LUX`: Ambient light threshold for turning lights on
+- `WIFI_SSID` / `WIFI_PASSWORD`: Network credentials - only used as the fallback `ConfigManager` falls back to if no runtime config was ever saved via the web UI (Preferences takes precedence once set)
+- `LIGHT_START_HOUR` / `LIGHT_END_HOUR`: Schedule default (supports overnight schedules); also overridable at runtime via `ConfigManager`
+- `LIGHT_THRESHOLD_LUX`: Ambient light threshold default for turning lights on; also overridable at runtime
 - Hardware pins: `RELAY_PIN`, `I2C_SDA_PIN`, `I2C_SCL_PIN`
 
 **Key Constants**:
 - `MIN_SWITCH_INTERVAL_MS`: Anti-flicker protection (60 seconds minimum)
 - `CHECK_INTERVAL_MS`: Main control loop interval (30 seconds)
 - `SENSOR_SAMPLES`: Averaging buffer size for stable readings
+- `WATCHDOG_TIMEOUT_MS`: Hardware watchdog timeout - must stay above the worst-case blocking call in `loop()` (currently `WIFI_TIMEOUT_MS`'s 10s reconnect wait)
 
 ## Coding Conventions
 

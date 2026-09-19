@@ -138,6 +138,11 @@ src/
 - Sensor: Consecutive failure counting for recovery triggering
 - All components: Automatic recovery when failures detected by PlantController
 
+**Watchdog Timer:**
+- Hardware task watchdog (`esp_task_wdt`) force-resets the board if `loop()` ever hangs (e.g. a stuck I2C read) - the one failure mode SystemDiagnostics's after-the-fact crash detection can't recover from on its own
+- Reports the hardware's actual reset reason (watchdog/panic/brownout/power-on/etc.) into SystemDiagnostics on boot
+- Only subscribed after the boot-time WiFi/time wait loops complete, so a slow but healthy connection during startup doesn't false-trigger it
+
 ### ✅ Integration & System Features
 - **Comprehensive Status Display**: Real-time system health monitoring
 - **Automatic Error Recovery**: Self-healing component reinitialization

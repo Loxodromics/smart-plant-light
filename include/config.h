@@ -29,4 +29,7 @@
 /// Safety Configuration
 #define MIN_SWITCH_INTERVAL_MS 60000  /// Minimum 1 minute between relay switches
 
+/// Watchdog Configuration
+#define WATCHDOG_TIMEOUT_MS 25000  /// Must exceed WIFI_TIMEOUT_MS (worst-case blocking call in loop())
+
 #endif
