@@ -103,7 +103,17 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 
 ## Development Tips
 
-**Serial Monitor**: System provides comprehensive status output with emoji indicators for quick visual debugging.
+**Serial Monitor**: System provides comprehensive status output with emoji indicators for quick visual debugging. `pio device monitor` requires an interactive TTY and fails outright (`UserSideException`) when run from a non-interactive shell/agent - for scripted or headless reads, open the port directly with pyserial instead, and explicitly clear DTR/RTS before opening or the board reads as completely silent (pyserial asserts both by default on open, which holds this board's auto-reset circuit in reset for as long as the port stays open):
+```python
+import serial
+s = serial.Serial()
+s.port = '/dev/cu.usbserial-XXXX'  # check `pio device list`; macOS reassigns this suffix on every USB (re)plug
+s.baudrate = 115200
+s.dtr = False
+s.rts = False
+s.open()
+```
+Only one process can hold the serial port open at a time - if `pio device monitor` (VS Code or CLI) already has it, a second connection attempt fails with "device reports readiness to read but returned no data (device disconnected or multiple access on port?)"; find and stop the other holder (`lsof /dev/cu.usbserial-XXXX`) first.
 
 **Component Testing**: There is no unit test suite yet - `test/` and `lib/` only contain PlatformIO's default scaffolding READMEs. Validate behavior by checking existing test patterns in main.cpp (it doubles as a full integration test with status display functions) or `pio test` once a PlatformIO test suite is added.
 
