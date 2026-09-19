@@ -18,6 +18,7 @@ TimeManager::TimeManager(const char* ntpServer, int timezoneOffsetHours)
 	, syncCount(0)
 	, failedSyncCount(0)
 	, timeValid(false)
+	, started(false)
 {
 	/// We create the NTP client with our timezone offset
 	this->ntpClient = new NTPClient(this->ntpUDP, this->ntpServer, this->timezoneOffsetSeconds);
@@ -29,6 +30,11 @@ TimeManager::~TimeManager() {
 }
 
 void TimeManager::begin() {
+	if (this->started) {
+		return; /// Already started, e.g. WiFi reconnected without a reboot
+	}
+	this->started = true;
+
 	/// We initialize the NTP client
 	this->ntpClient->begin();
 	
@@ -50,6 +56,10 @@ void TimeManager::begin() {
 }
 
 void TimeManager::update() {
+	if (!this->started) {
+		return;
+	}
+
 	/// We check if it's time for a sync
 	if (this->needsSync() && this->shouldAttemptSync()) {
 		Serial.println("TimeManager: Performing scheduled sync...");
@@ -64,6 +74,10 @@ void TimeManager::update() {
 }
 
 bool TimeManager::syncTime() {
+	if (!this->started) {
+		return false; /// NTP client isn't begun until WiFi first connects
+	}
+
 	this->lastSyncAttempt = millis();
 	
 	Serial.println("TimeManager: Synchronizing with NTP server...");
@@ -260,4 +274,8 @@ void TimeManager::setTimezoneOffset(int offsetHours) {
 
 bool TimeManager::isTimeValid() const {
 	return this->hasValidTime();
+}
+
+bool TimeManager::isStarted() const {
+	return this->started;
 }

@@ -37,6 +37,7 @@ void displayWiFiStatus();
 void displayControlStatus();
 void initializeComponents();
 void waitForSystemReady();
+void startNetworkServicesIfNeeded();
 void displaySystemConfiguration();
 void displayFullSystemStatus();
 void displayConnectivityStatus();
@@ -88,9 +89,6 @@ void setup() {
 	Serial.println("🐕 Initializing Watchdog Manager...");
 	watchdogManager = new WatchdogManager(WATCHDOG_TIMEOUT_MS);
 	watchdogManager->begin();
-	if (watchdogManager->wasLastResetAFault()) {
-		diagnostics->recordFailure(ComponentType::System, watchdogManager->getLastResetReasonString());
-	}
 	Serial.println();
 
 	/// We initialize the main plant controller with diagnostics
@@ -101,16 +99,13 @@ void setup() {
 	const PlantLightConfig& config = configManager->getConfig();
 	plantController->updateConfiguration(config.lightStartHour, config.lightEndHour, config.lightThresholdLux, config.hysteresisLux);
 
-	/// We initialize web server if WiFi is connected
-	if (wifiManager->isConnected()) {
-		Serial.println("🌐 Starting Web Server...");
-		webServer = new PlantWebServer(configManager, plantController, lightSensor, timeManager, wifiManager, relayController);
-		webServer->begin();
-		Serial.print("✅ Web interface available at http://");
-		Serial.println(wifiManager->getLocalIP());
-	} else {
-		webServer = nullptr;
-	}
+	/// We start the web server unconditionally - AsyncWebServer binds to
+	/// IP_ADDR_ANY on lwIP and serves as soon as any interface has an
+	/// address, so it doesn't need to wait for WiFi
+	Serial.println("🌐 Starting Web Server...");
+	webServer = new PlantWebServer(configManager, plantController, lightSensor, timeManager, wifiManager, relayController);
+	webServer->begin();
+	startNetworkServicesIfNeeded();
 
 	Serial.println();
 	Serial.println("🌱 Smart Plant Light Controller is now ACTIVE!");
@@ -131,11 +126,9 @@ void loop() {
 	
 	/// We continuously update all components
 	wifiManager->update();
-	
-	if (wifiManager->isConnected()) {
-		timeManager->update();
-	}
-	
+
+	startNetworkServicesIfNeeded();
+
 	/// We update sensor readings regularly
 	if (currentTime - lastSensorUpdate >= sensorInterval) {
 		lastSensorUpdate = currentTime;
@@ -180,7 +173,14 @@ void initializeComponents() {
 	Serial.println("  📡 WiFi Manager...");
 	wifiManager = new WiFiManager(config.wifiSSID, config.wifiPassword);
 	wifiManager->begin();
-	
+
+	/// We construct the time manager unconditionally - constructing the
+	/// NTPClient doesn't touch the network, so this is safe even before
+	/// WiFi connects. It's begin()-ed once WiFi first connects (see
+	/// startNetworkServicesIfNeeded())
+	Serial.println("  ⏰ Time Manager...");
+	timeManager = new TimeManager(NTP_SERVER, config.timezoneOffsetHours);
+
 	/// We initialize relay controller (must be first for safety)
 	Serial.println("  🔌 Relay Controller...");
 	relayController = new RelayController(RELAY_PIN);
@@ -216,14 +216,8 @@ void waitForSystemReady() {
 	if (wifiManager->isConnected()) {
 		Serial.println("  ✓ WiFi connected");
 
-		/// We get configuration from ConfigManager
-		const PlantLightConfig& config = configManager->getConfig();
-
-		/// We initialize time manager after WiFi is ready with runtime timezone
-		Serial.println("  ⏰ Time Manager...");
-		timeManager = new TimeManager(NTP_SERVER, config.timezoneOffsetHours);
 		timeManager->begin();
-		
+
 		/// We wait for initial time sync
 		Serial.println("  ⏰ Waiting for time synchronization...");
 		unsigned long timeStartTime = millis();
@@ -242,8 +236,7 @@ void waitForSystemReady() {
 			Serial.println("  ⚠ Time sync failed - continuing with limited functionality");
 		}
 	} else {
-		Serial.println("  ⚠ WiFi connection failed - continuing without time sync");
-		timeManager = nullptr;
+		Serial.println("  ⚠ WiFi connection failed - time sync will start once WiFi connects");
 	}
 	
 	/// We take initial sensor readings
@@ -254,6 +247,25 @@ void waitForSystemReady() {
 	}
 	
 	Serial.println("✓ System ready for operation");
+}
+
+void startNetworkServicesIfNeeded() {
+	static bool announced = false;
+
+	if (!wifiManager->isConnected()) {
+		return;
+	}
+
+	if (!timeManager->isStarted()) {
+		timeManager->begin();
+	}
+	timeManager->update();
+
+	if (!announced) {
+		announced = true;
+		Serial.print("✅ Web interface available at http://");
+		Serial.println(wifiManager->getLocalIP());
+	}
 }
 
 void displaySystemConfiguration() {
@@ -296,8 +308,7 @@ void displaySystemConfiguration() {
 
 	Serial.print("🐕 Watchdog: active, ");
 	Serial.print(WATCHDOG_TIMEOUT_MS / 1000);
-	Serial.print("s timeout | Last reset: ");
-	Serial.println(watchdogManager->getLastResetReasonString());
+	Serial.println("s timeout");
 }
 
 void displayFullSystemStatus() {
@@ -347,7 +358,7 @@ void displayConnectivityStatus() {
 
 void displayTimeStatus() {
 	Serial.print("⏰ Time: ");
-	if (timeManager && timeManager->hasValidTime()) {
+	if (timeManager->hasValidTime()) {
 		Serial.print("✅ ");
 		Serial.print(timeManager->getCurrentTimeString());
 		Serial.print(" (synced ");
@@ -434,21 +445,4 @@ void displayControlStatus() {
 	} else {
 		Serial.println("❌ DEGRADED (missing data)");
 	}
-}
-
-/// We clean up memory on program end
-void cleanup() {
-	if (diagnostics) {
-		diagnostics->clearCrashMarker();  /// Mark clean shutdown
-		delete diagnostics;
-		diagnostics = nullptr;
-	}
-	if (webServer) { delete webServer; webServer = nullptr; }
-	if (watchdogManager) { delete watchdogManager; watchdogManager = nullptr; }
-	if (plantController) { delete plantController; plantController = nullptr; }
-	if (relayController) { delete relayController; relayController = nullptr; }
-	if (lightSensor) { delete lightSensor; lightSensor = nullptr; }
-	if (timeManager) { delete timeManager; timeManager = nullptr; }
-	if (wifiManager) { delete wifiManager; wifiManager = nullptr; }
-	if (configManager) { delete configManager; configManager = nullptr; }
 }

@@ -11,13 +11,10 @@
 #include <esp_system.h>
 #include <math.h>
 
-/// RTC memory for crash detection (survives soft reboots but not power cycles)
-RTC_DATA_ATTR bool rtcCrashMarker = false;
-
 SystemDiagnostics::SystemDiagnostics()
 	: bootTime(0)
 	, bootCount(0)
-	, unexpectedReboot(false)
+	, lastResetReason(ESP_RST_UNKNOWN)
 	, wifiBufferIndex(0)
 	, wifiBufferFull(false)
 	, sensorBufferIndex(0)
@@ -46,23 +43,32 @@ void SystemDiagnostics::begin() {
 	/// We record the boot time
 	this->bootTime = millis();
 
-	/// We check for crash marker
-	this->unexpectedReboot = this->checkForCrash();
+	/// We read the hardware reset reason - this is the authoritative signal
+	/// for whether the previous reset was a genuine fault, unlike a
+	/// soft/RTC marker which can't distinguish a fault from a manual restart
+	this->lastResetReason = esp_reset_reason();
 
 	/// We load persistent data
 	this->loadPersistentData();
 
 	/// We increment boot count
 	this->bootCount++;
-	this->savePersistentData();
 
-	/// We set crash marker (cleared on clean shutdown)
-	this->setCrashMarker();
+	/// We record the fault as a System failure, persisted with the bumped
+	/// boot count so it's attributable to this boot. recordFailure() already
+	/// saves, so we only need an explicit save on the non-fault path
+	if (this->wasLastResetAFault()) {
+		this->recordFailure(ComponentType::System, this->getLastResetReasonString());
+	} else {
+		this->savePersistentData();
+	}
 
 	Serial.print("SystemDiagnostics: Boot #");
 	Serial.println(this->bootCount);
+	Serial.print("SystemDiagnostics: Last reset - ");
+	Serial.println(this->getLastResetReasonString());
 
-	if (this->unexpectedReboot) {
+	if (this->wasLastResetAFault()) {
 		Serial.println("SystemDiagnostics: ⚠ Unexpected reboot detected (possible crash)");
 	}
 
@@ -190,7 +196,7 @@ float SystemDiagnostics::getSensorStability() const {
 }
 
 bool SystemDiagnostics::hadUnexpectedReboot() const {
-	return this->unexpectedReboot;
+	return this->wasLastResetAFault();
 }
 
 unsigned long SystemDiagnostics::getLastFailureTime(ComponentType component) const {
@@ -223,7 +229,10 @@ void SystemDiagnostics::displayReport() const {
 	Serial.print("🔄 Boot count: ");
 	Serial.println(this->bootCount);
 
-	if (this->unexpectedReboot) {
+	Serial.print("🔌 Last reset: ");
+	Serial.println(this->getLastResetReasonString());
+
+	if (this->wasLastResetAFault()) {
 		Serial.println("⚠️  Last boot was unexpected (possible crash)");
 	}
 
@@ -339,20 +348,31 @@ void SystemDiagnostics::savePersistentData() {
 	prefs.end();
 }
 
-bool SystemDiagnostics::checkForCrash() {
-	/// We check the RTC memory marker
-	/// If it's set, we had a crash (didn't clean shutdown)
-	return rtcCrashMarker;
+const char* SystemDiagnostics::getLastResetReasonString() const {
+	switch (this->lastResetReason) {
+		case ESP_RST_POWERON:   return "Power-on reset";
+		case ESP_RST_EXT:       return "External pin reset";
+		case ESP_RST_SW:        return "Software reset";
+		case ESP_RST_PANIC:     return "Software panic (crash)";
+		case ESP_RST_INT_WDT:   return "Interrupt watchdog";
+		case ESP_RST_TASK_WDT:  return "Task watchdog (hang detected)";
+		case ESP_RST_WDT:       return "Other watchdog";
+		case ESP_RST_DEEPSLEEP: return "Woke from deep sleep";
+		case ESP_RST_BROWNOUT:  return "Brownout (power dip)";
+		case ESP_RST_SDIO:      return "SDIO reset";
+		default:                return "Unknown reset reason";
+	}
 }
 
-void SystemDiagnostics::setCrashMarker() {
-	/// We set the crash marker
-	/// This will be cleared on clean shutdown
-	rtcCrashMarker = true;
-}
-
-void SystemDiagnostics::clearCrashMarker() {
-	/// We clear the crash marker on clean shutdown
-	rtcCrashMarker = false;
-	Serial.println("SystemDiagnostics: Crash marker cleared (clean shutdown)");
+bool SystemDiagnostics::wasLastResetAFault() const {
+	switch (this->lastResetReason) {
+		case ESP_RST_PANIC:
+		case ESP_RST_INT_WDT:
+		case ESP_RST_TASK_WDT:
+		case ESP_RST_WDT:
+		case ESP_RST_BROWNOUT:
+			return true;
+		default:
+			return false;
+	}
 }

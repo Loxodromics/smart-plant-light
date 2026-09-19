@@ -18,10 +18,15 @@ class TimeManager {
 public:
 	explicit TimeManager(const char* ntpServer, int timezoneOffsetHours);
 	~TimeManager();
-	
+
 	/// Initialize the NTP client (requires WiFi connection)
 	/// We set up the NTP client with server and timezone configuration
+	/// Safe to call once WiFi first connects; a second call is a no-op
 	void begin();
+
+	/// Check whether begin() has been called yet
+	/// We use this to defer NTP client use until WiFi first connects
+	[[nodiscard]] bool isStarted() const;
 	
 	/// Update time from NTP server if needed
 	/// We check if it's time for a sync and perform it if necessary
@@ -94,7 +99,8 @@ private:
 	unsigned long syncCount;
 	unsigned long failedSyncCount;
 	bool timeValid;
-	
+	bool started;
+
 	/// Check if enough time has passed for next sync attempt
 	[[nodiscard]] bool shouldAttemptSync() const;
 	

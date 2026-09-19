@@ -115,12 +115,16 @@ bool LightSensor::isSensorHealthy() const {
 	}
 	
 	/// We consider the sensor healthy if we've had recent successful readings
-	/// and the readings are within expected ranges
+	/// and the readings are within expected ranges. hasSamples guards against
+	/// the boot window and the post-recovery window (resetAveraging() empties
+	/// the buffer while lastReadingTime is still recent), where lastReadingTime
+	/// alone would report healthy at a stale or zeroed lux value
 	unsigned long timeSinceLastReading = millis() - this->lastReadingTime;
 	bool recentReading = timeSinceLastReading < 60000; /// Within last minute
 	bool validReading = !isnan(this->lastRawLux) && this->lastRawLux >= 0;
-	
-	return recentReading && validReading;
+	bool hasSamples = this->bufferFull || this->bufferIndex > 0;
+
+	return recentReading && validReading && hasSamples;
 }
 
 unsigned long LightSensor::getReadingCount() const {

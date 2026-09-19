@@ -10,6 +10,7 @@
 #define SYSTEMDIAGNOSTICS_H
 
 #include <Arduino.h>
+#include <esp_system.h>
 
 /// Component identifier for failure tracking
 enum class ComponentType {
@@ -39,7 +40,7 @@ public:
 	SystemDiagnostics();
 
 	/// Initialize diagnostics system
-	/// We check for crash markers and load persistent counters
+	/// We read the hardware reset reason and load persistent counters
 	void begin();
 
 	/// Record system startup
@@ -92,14 +93,18 @@ public:
 	/// Get component name as string
 	[[nodiscard]] const char* getComponentName(ComponentType component) const;
 
-	/// Clear crash marker (for clean shutdown)
-	void clearCrashMarker();
+	/// Get a human-readable reason for the last system reset
+	[[nodiscard]] const char* getLastResetReasonString() const;
+
+	/// Check whether the last reset was caused by a genuine fault
+	/// (watchdog/panic/brownout) rather than a normal power-on or manual reset
+	[[nodiscard]] bool wasLastResetAFault() const;
 
 private:
 	/// System tracking
 	unsigned long bootTime;
 	unsigned long bootCount;
-	bool unexpectedReboot;
+	esp_reset_reason_t lastResetReason;
 
 	/// Failure tracking (per component)
 	unsigned long failureCount[5];  /// One per ComponentType
@@ -135,12 +140,6 @@ private:
 
 	/// Save persistent counters to flash
 	void savePersistentData();
-
-	/// Check for crash marker in RTC memory
-	bool checkForCrash();
-
-	/// Set crash marker in RTC memory
-	void setCrashMarker();
 };
 
 #endif /// SYSTEMDIAGNOSTICS_H

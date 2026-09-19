@@ -51,15 +51,17 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 
 **Hardware Abstraction Layer:**
 - **RelayController**: Safe relay switching with anti-flicker protection
-- **LightSensor**: VEML7700 I2C sensor with averaging buffer; self-heals via `attemptRecovery()` after repeated consecutive read failures (I2C bus reset + sensor reinit)
+- **LightSensor**: VEML7700 I2C sensor with averaging buffer; self-heals via `attemptRecovery()` (I2C bus reset + sensor reinit) when `isSensorHealthy()` reports no successful reading within the last minute, or no sample since the last buffer reset (boot, or post-recovery before the next successful read)
 - **WiFiManager**: Robust WiFi connection with auto-reconnection
 - **TimeManager**: NTP synchronization with timezone support
 - **WatchdogManager**: Hardware task watchdog (`esp_task_wdt`) that force-resets the board if `loop()` ever hangs (e.g. a stuck I2C read); only subscribed after the boot-time WiFi/time wait loops complete, to avoid false-triggering on a slow but healthy boot
 
 **System-Level Components:**
-- **SystemDiagnostics**: Boot count, unexpected-reboot detection (RTC crash marker), per-component failure/recovery history, WiFi/sensor performance metrics, persisted via the ESP32 Preferences API
+- **SystemDiagnostics**: Boot count, unexpected-reboot detection via `esp_reset_reason()`, per-component failure/recovery history, WiFi/sensor performance metrics, persisted via the ESP32 Preferences API
 - **ConfigManager**: Runtime configuration (WiFi credentials, schedule, threshold, hysteresis, timezone) persisted via Preferences, with fallback to `config.h` defaults
-- **PlantWebServer**: Single-page status/config UI served over `ESPAsyncWebServer` when WiFi is connected - has no authentication and echoes the WiFi password into the settings form, so treat it as trusted-LAN-only
+- **PlantWebServer**: Single-page status/config UI served over `ESPAsyncWebServer`, constructed and started unconditionally at boot (it binds to `IP_ADDR_ANY` and serves as soon as any interface has an address, so it doesn't need to wait for WiFi) - has no authentication and echoes the WiFi password into the settings form, so treat it as trusted-LAN-only
+
+`TimeManager` is likewise always constructed at boot; NTP sync only starts (via `begin()`) once WiFi first connects, so the device is never stuck in a null-pointer crash loop when it boots without WiFi.
 
 ### Key Design Patterns
 
