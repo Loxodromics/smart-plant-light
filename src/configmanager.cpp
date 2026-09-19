@@ -56,6 +56,10 @@ void ConfigManager::loadConfiguration() {
     /// Load schedule
     this->config.lightStartHour = this->preferences.getUChar("sched.start", LIGHT_START_HOUR);
     this->config.lightEndHour = this->preferences.getUChar("sched.end", LIGHT_END_HOUR);
+    /// v3 adds minute-level granularity; default 0 alone preserves HH:00 for
+    /// pre-v3 stores, so no old value needs remapping
+    this->config.lightStartMinute = this->preferences.getUChar("sched.start.min", LIGHT_START_MINUTE);
+    this->config.lightEndMinute = this->preferences.getUChar("sched.end.min", LIGHT_END_MINUTE);
 
     /// Load sensor threshold
     this->config.lightThresholdLux = this->preferences.getFloat("sensor.thresh", LIGHT_THRESHOLD_LUX);
@@ -77,6 +81,11 @@ void ConfigManager::loadConfiguration() {
         String timezone = this->preferences.getString("tz.posix", TIMEZONE_TZ);
         strncpy(this->config.timezone, timezone.c_str(), sizeof(this->config.timezone) - 1);
         this->config.timezone[sizeof(this->config.timezone) - 1] = '\0';
+    }
+
+    if (savedVersion < 3) {
+        Serial.println("⚠️  ConfigManager: Schedule minute fields added in v3 - persisted as HH:00");
+        needsMigrationSave = true;
     }
 
     Serial.println("✅ ConfigManager: Configuration loaded from flash");
@@ -107,6 +116,8 @@ bool ConfigManager::saveConfiguration() {
     /// Save schedule
     this->preferences.putUChar("sched.start", this->config.lightStartHour);
     this->preferences.putUChar("sched.end", this->config.lightEndHour);
+    this->preferences.putUChar("sched.start.min", this->config.lightStartMinute);
+    this->preferences.putUChar("sched.end.min", this->config.lightEndMinute);
 
     /// Save sensor threshold
     this->preferences.putFloat("sensor.thresh", this->config.lightThresholdLux);
@@ -137,7 +148,9 @@ void ConfigManager::resetToDefaults() {
 
     /// Set default schedule
     this->config.lightStartHour = LIGHT_START_HOUR;
+    this->config.lightStartMinute = LIGHT_START_MINUTE;
     this->config.lightEndHour = LIGHT_END_HOUR;
+    this->config.lightEndMinute = LIGHT_END_MINUTE;
 
     /// Set default threshold
     this->config.lightThresholdLux = LIGHT_THRESHOLD_LUX;
@@ -185,9 +198,11 @@ void ConfigManager::setWiFiCredentials(const char* ssid, const char* password) {
     }
 }
 
-void ConfigManager::setSchedule(uint8_t startHour, uint8_t endHour) {
+void ConfigManager::setSchedule(uint8_t startHour, uint8_t startMinute, uint8_t endHour, uint8_t endMinute) {
     this->config.lightStartHour = startHour;
+    this->config.lightStartMinute = startMinute;
     this->config.lightEndHour = endHour;
+    this->config.lightEndMinute = endMinute;
 }
 
 void ConfigManager::setLightThreshold(float thresholdLux) {
@@ -213,7 +228,9 @@ void ConfigManager::printConfiguration() const {
     Serial.println("📋 Current Configuration:");
     Serial.printf("  WiFi SSID: %s\n", this->config.wifiSSID);
     Serial.printf("  WiFi Password: %s\n", strlen(this->config.wifiPassword) > 0 ? "********" : "(empty)");
-    Serial.printf("  Schedule: %02d:00 - %02d:00\n", this->config.lightStartHour, this->config.lightEndHour);
+    Serial.printf("  Schedule: %02d:%02d - %02d:%02d\n",
+        this->config.lightStartHour, this->config.lightStartMinute,
+        this->config.lightEndHour, this->config.lightEndMinute);
     Serial.printf("  Light Threshold: %.1f lux\n", this->config.lightThresholdLux);
     Serial.printf("  Hysteresis: %.1f lux\n", this->config.hysteresisLux);
     Serial.printf("  Min switch interval: %u ms\n", this->config.minSwitchIntervalMs);
@@ -222,9 +239,10 @@ void ConfigManager::printConfiguration() const {
 }
 
 bool ConfigManager::validateSchedule(const PlantLightConfig& config) {
-    /// Hours must be in valid range 0-23
-    if (config.lightStartHour > 23 || config.lightEndHour > 23) {
-        Serial.println("❌ Invalid schedule: Hours must be 0-23");
+    /// Hours must be in valid range 0-23, minutes 0-59
+    if (config.lightStartHour > 23 || config.lightEndHour > 23 ||
+        config.lightStartMinute > 59 || config.lightEndMinute > 59) {
+        Serial.println("❌ Invalid schedule: Hours must be 0-23, minutes 0-59");
         return false;
     }
 

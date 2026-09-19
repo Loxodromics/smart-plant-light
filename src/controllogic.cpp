@@ -7,20 +7,20 @@
 
 #include "controllogic.h"
 
-bool isHourInSchedule(int hour, int startHour, int endHour) {
-	/// Equal hours mean the schedule never turns itself off (24-hour operation)
-	if (startHour == endHour) {
+bool isTimeInSchedule(int minutesSinceMidnight, int startMinutes, int endMinutes) {
+	/// Equal times mean the schedule never turns itself off (24-hour operation)
+	if (startMinutes == endMinutes) {
 		return true;
 	}
 
-	/// Normal ranges (e.g., 6 to 22)
-	if (startHour < endHour) {
-		return hour >= startHour && hour < endHour;
+	/// Normal ranges (e.g., 08:00 to 22:00)
+	if (startMinutes < endMinutes) {
+		return minutesSinceMidnight >= startMinutes && minutesSinceMidnight < endMinutes;
 	}
 
-	/// Ranges that cross midnight (e.g., 22 to 6): lights are in-schedule
+	/// Ranges that cross midnight (e.g., 22:00 to 06:00): lights are in-schedule
 	/// from 22:00 through 06:00 overnight
-	return hour >= startHour || hour < endHour;
+	return minutesSinceMidnight >= startMinutes || minutesSinceMidnight < endMinutes;
 }
 
 bool isAmbientLightLow(float lux, bool relayOn, float thresholdLux, float hysteresisLux) {
@@ -52,7 +52,7 @@ ControlOutput decide(const ControlInputs& in, const ControlPolicy& policy) {
 		return {ControlDecision::WaitForData, ControlReason::NoValidTime};
 	}
 
-	if (!isHourInSchedule(in.hour, policy.startHour, policy.endHour)) {
+	if (!isTimeInSchedule(in.minutesSinceMidnight, policy.startMinutes, policy.endMinutes)) {
 		/// Outside the schedule the sensor is irrelevant - lights-off is the
 		/// safe state even if the sensor is unhealthy
 		return {in.relayOn ? ControlDecision::TurnOff : ControlDecision::KeepCurrent, ControlReason::OutOfSchedule};

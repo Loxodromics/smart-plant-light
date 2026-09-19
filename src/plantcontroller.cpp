@@ -29,7 +29,7 @@ PlantController::PlantController(WiFiManager* wifiManager, TimeManager* timeMana
 	, manualOverride(ManualOverride::Auto)
 	, updateInterval(CHECK_INTERVAL_MS)
 	, lastDecisionDeferred(false)
-	, policy{LIGHT_START_HOUR, LIGHT_END_HOUR, LIGHT_THRESHOLD_LUX, 15.0}  /// Default 15 lux dead band
+	, policy{LIGHT_START_HOUR * 60 + LIGHT_START_MINUTE, LIGHT_END_HOUR * 60 + LIGHT_END_MINUTE, LIGHT_THRESHOLD_LUX, 15.0}  /// Default 15 lux dead band
 	, lastSensorRecoveryAttempt(0)
 	, lastTimeRecoveryAttempt(0)
 	, recoveryInterval(60000)  /// 1 minute cooldown between recovery attempts
@@ -42,11 +42,9 @@ void PlantController::begin() {
 	Serial.println("PlantController: Initializing intelligent plant light control");
 
 	/// We display the control configuration
-	Serial.print("Schedule: ");
-	Serial.print(this->policy.startHour);
-	Serial.print(":00 to ");
-	Serial.print(this->policy.endHour);
-	Serial.println(":00");
+	Serial.printf("Schedule: %02d:%02d to %02d:%02d\n",
+		this->policy.startMinutes / 60, this->policy.startMinutes % 60,
+		this->policy.endMinutes / 60, this->policy.endMinutes % 60);
 
 	Serial.print("Light threshold: ");
 	Serial.print(this->policy.thresholdLux);
@@ -148,19 +146,17 @@ ManualOverride PlantController::getManualOverride() const {
 	return this->manualOverride;
 }
 
-void PlantController::updateConfiguration(int startHour, int endHour, float thresholdLux, float hysteresisLux) {
-	/// We update the configuration with new values
-	this->policy.startHour = startHour;
-	this->policy.endHour = endHour;
+void PlantController::updateConfiguration(int startHour, int startMinute, int endHour, int endMinute,
+                                          float thresholdLux, float hysteresisLux) {
+	/// We convert hour+minute to minutes-since-midnight, the unit the pure
+	/// decision logic uses
+	this->policy.startMinutes = startHour * 60 + startMinute;
+	this->policy.endMinutes = endHour * 60 + endMinute;
 	this->policy.thresholdLux = thresholdLux;
 	this->policy.hysteresisLux = hysteresisLux;
 
 	Serial.println("PlantController: Configuration updated");
-	Serial.print("  Schedule: ");
-	Serial.print(this->policy.startHour);
-	Serial.print(":00 to ");
-	Serial.print(this->policy.endHour);
-	Serial.println(":00");
+	Serial.printf("  Schedule: %02d:%02d to %02d:%02d\n", startHour, startMinute, endHour, endMinute);
 	Serial.print("  Light threshold: ");
 	Serial.print(this->policy.thresholdLux);
 	Serial.println(" lux");
@@ -177,10 +173,17 @@ bool PlantController::isLastDecisionDeferred() const {
 }
 
 ControlInputs PlantController::gatherInputs() const {
+	/// getLocalTime() reads hour and minute from a single struct tm snapshot -
+	/// two separate getCurrentHour()/getCurrentMinute() calls would each
+	/// re-read the clock independently, risking a torn read across an hour
+	/// boundary (e.g. hour=7 from the first call, minute=0 from the second)
+	struct tm tm;
+	bool timeValid = this->timeManager->getLocalTime(tm);
+
 	return ControlInputs{
 		this->manualOverride,
-		this->timeManager->hasValidTime(),
-		this->timeManager->getCurrentHour(),
+		timeValid,
+		tm.tm_hour * 60 + tm.tm_min,
 		this->lightSensor->isSensorHealthy(),
 		this->lightSensor->getCurrentLux(),
 		this->relayController->getRelayState()

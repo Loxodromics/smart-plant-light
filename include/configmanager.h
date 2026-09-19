@@ -11,9 +11,11 @@ struct PlantLightConfig {
     char wifiSSID[32];
     char wifiPassword[64];
 
-    /// Light schedule (24-hour format)
-    uint8_t lightStartHour;  /// 0-23
-    uint8_t lightEndHour;    /// 0-23
+    /// Light schedule (24-hour HH:MM format)
+    uint8_t lightStartHour;    /// 0-23
+    uint8_t lightStartMinute;  /// 0-59
+    uint8_t lightEndHour;      /// 0-23
+    uint8_t lightEndMinute;    /// 0-59
 
     /// Light sensor threshold
     float lightThresholdLux;
@@ -72,7 +74,7 @@ public:
 
     /// Update configuration (does not save automatically)
     void setWiFiCredentials(const char* ssid, const char* password);
-    void setSchedule(uint8_t startHour, uint8_t endHour);
+    void setSchedule(uint8_t startHour, uint8_t startMinute, uint8_t endHour, uint8_t endMinute);
     void setLightThreshold(float thresholdLux);
     void setHysteresis(float hysteresisLux);
     void setMinSwitchInterval(uint32_t intervalMs);
@@ -90,8 +92,9 @@ private:
 
     /// Current configuration version - bumped when the stored layout changes
     /// in a way loadConfiguration() must handle. First real use: v1 stored a
-    /// UTC hour offset ("tz.offset"), v2 stores a POSIX TZ string ("tz.posix")
-    static constexpr uint32_t CONFIG_VERSION = 2;
+    /// UTC hour offset ("tz.offset"), v2 stores a POSIX TZ string ("tz.posix"),
+    /// v3 adds minute-level schedule fields ("sched.start.min"/"sched.end.min")
+    static constexpr uint32_t CONFIG_VERSION = 3;
 
     /// Validate individual configuration values
     [[nodiscard]] static bool validateSchedule(const PlantLightConfig& config);

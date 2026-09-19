@@ -96,7 +96,8 @@ void setup() {
 
 	/// We update plant controller with runtime configuration
 	const PlantLightConfig& config = configManager->getConfig();
-	plantController->updateConfiguration(config.lightStartHour, config.lightEndHour, config.lightThresholdLux, config.hysteresisLux);
+	plantController->updateConfiguration(config.lightStartHour, config.lightStartMinute,
+		config.lightEndHour, config.lightEndMinute, config.lightThresholdLux, config.hysteresisLux);
 
 	/// We start the web server unconditionally - AsyncWebServer binds to
 	/// IP_ADDR_ANY on lwIP and serves as soon as any interface has an
@@ -277,12 +278,12 @@ void displaySystemConfiguration() {
 	const PlantLightConfig& config = configManager->getConfig();
 
 	Serial.println("━━━ System Configuration ━━━");
-	Serial.print("📅 Schedule: ");
-	Serial.print(config.lightStartHour);
-	Serial.print(":00 - ");
-	Serial.print(config.lightEndHour);
-	Serial.print(":00 ");
-	if (config.lightStartHour > config.lightEndHour) {
+	Serial.printf("📅 Schedule: %02d:%02d - %02d:%02d ",
+		config.lightStartHour, config.lightStartMinute,
+		config.lightEndHour, config.lightEndMinute);
+	/// Overnight check compares minutes-since-midnight so minute-level
+	/// boundaries classify correctly (e.g. 08:00-08:30 is daytime)
+	if (config.lightStartHour * 60 + config.lightStartMinute > config.lightEndHour * 60 + config.lightEndMinute) {
 		Serial.println("(overnight schedule)");
 	} else {
 		Serial.println("(daytime schedule)");

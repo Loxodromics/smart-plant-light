@@ -130,6 +130,42 @@ bool PlantWebServer::parseFloatParam(AsyncWebServerRequest* request, const char*
     return true;
 }
 
+bool PlantWebServer::parseTimeParam(AsyncWebServerRequest* request, const char* name,
+                                     uint8_t& hourOut, uint8_t& minuteOut) {
+    if (!request->hasParam(name, true)) {
+        return false;
+    }
+
+    const String& value = request->getParam(name, true)->value();
+    if (value.length() != 5 || value[2] != ':') {
+        return false;
+    }
+
+    /// Parse both fixed-width 2-digit substrings with strtol's end-pointer
+    /// check, same strict style as parseLongParam
+    String hourStr = value.substring(0, 2);
+    char* end = nullptr;
+    long hour = strtol(hourStr.c_str(), &end, 10);
+    if (end != hourStr.c_str() + 2) {
+        return false;  /// non-digit or trailing garbage in the hour part
+    }
+
+    String minuteStr = value.substring(3, 5);
+    end = nullptr;
+    long minute = strtol(minuteStr.c_str(), &end, 10);
+    if (end != minuteStr.c_str() + 2) {
+        return false;
+    }
+
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        return false;
+    }
+
+    hourOut = static_cast<uint8_t>(hour);
+    minuteOut = static_cast<uint8_t>(minute);
+    return true;
+}
+
 String PlantWebServer::htmlEscape(const String& value) {
     String escaped;
     escaped.reserve(value.length());
@@ -169,7 +205,8 @@ void PlantWebServer::applyConfig(const PlantLightConfig& config) {
     /// saving to flash alone doesn't affect the live decision logic until
     /// the next reboot. Always applied even when a reboot follows shortly
     /// after; harmless and simpler than special-casing it away
-    this->plantController->updateConfiguration(config.lightStartHour, config.lightEndHour,
+    this->plantController->updateConfiguration(config.lightStartHour, config.lightStartMinute,
+        config.lightEndHour, config.lightEndMinute,
         config.lightThresholdLux, config.hysteresisLux);
     this->relayController->setMinSwitchInterval(config.minSwitchIntervalMs);
     this->timeManager->setTimezone(config.timezone);
@@ -181,17 +218,18 @@ void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
     /// must not touch controller/config state directly
     PlantLightConfig candidate = this->configManager->getConfig();
 
-    long startHour = 0, endHour = 0, minSwitchIntervalSec = 0;
+    long minSwitchIntervalSec = 0;
     float threshold = 0, hysteresis = 0;
+    uint8_t startHour = 0, startMinute = 0, endHour = 0, endMinute = 0;
 
-    if (!parseLongParam(request, "start_hour", 0, 23, startHour)) {
+    if (!parseTimeParam(request, "start_time", startHour, startMinute)) {
         sendMessagePage(request, 400, "Invalid Configuration",
-            "❌ Invalid or missing field: start_hour (must be 0-23).", true);
+            "❌ Invalid or missing field: start_time (must be HH:MM, 24h).", true);
         return;
     }
-    if (!parseLongParam(request, "end_hour", 0, 23, endHour)) {
+    if (!parseTimeParam(request, "end_time", endHour, endMinute)) {
         sendMessagePage(request, 400, "Invalid Configuration",
-            "❌ Invalid or missing field: end_hour (must be 0-23).", true);
+            "❌ Invalid or missing field: end_time (must be HH:MM, 24h).", true);
         return;
     }
     if (!parseFloatParam(request, "threshold", 0.0f, 10000.0f, threshold)) {
@@ -239,8 +277,10 @@ void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
     bool needsReboot = strcmp(candidate.wifiSSID, newSSID.c_str()) != 0 ||
                         strcmp(candidate.wifiPassword, newPassword.c_str()) != 0;
 
-    candidate.lightStartHour = static_cast<uint8_t>(startHour);
-    candidate.lightEndHour = static_cast<uint8_t>(endHour);
+    candidate.lightStartHour = startHour;
+    candidate.lightStartMinute = startMinute;
+    candidate.lightEndHour = endHour;
+    candidate.lightEndMinute = endMinute;
     candidate.lightThresholdLux = threshold;
     candidate.hysteresisLux = hysteresis;
     candidate.minSwitchIntervalMs = static_cast<uint32_t>(minSwitchIntervalSec) * 1000;
@@ -439,7 +479,8 @@ String PlantWebServer::generateHTML() {
         }
         input[type="text"],
         input[type="password"],
-        input[type="number"] {
+        input[type="number"],
+        input[type="time"] {
             width: 100%;
             padding: 8px;
             border: 1px solid #bdc3c7;
@@ -592,19 +633,25 @@ String PlantWebServer::generateSettingsSection() {
         <h2>⚙️ Settings</h2>
         <form action="/save" method="POST">
             <div class="form-group">
-                <label for="start_hour">Start Hour (0-23)</label>
-                <input type="number" id="start_hour" name="start_hour" min="0" max="23" value=")";
-    html += String(config.lightStartHour);
+                <label for="start_time">Start Time</label>
+                <input type="time" id="start_time" name="start_time" value=")";
+    char startTimeBuf[6];
+    snprintf(startTimeBuf, sizeof(startTimeBuf), "%02u:%02u",
+        static_cast<unsigned>(config.lightStartHour), static_cast<unsigned>(config.lightStartMinute));
+    html += startTimeBuf;
     html += R"(" required>
-                <div class="input-hint">Hour when lights can turn on</div>
+                <div class="input-hint">Time (24h) when lights can turn on</div>
             </div>
 
             <div class="form-group">
-                <label for="end_hour">End Hour (0-23)</label>
-                <input type="number" id="end_hour" name="end_hour" min="0" max="23" value=")";
-    html += String(config.lightEndHour);
+                <label for="end_time">End Time</label>
+                <input type="time" id="end_time" name="end_time" value=")";
+    char endTimeBuf[6];
+    snprintf(endTimeBuf, sizeof(endTimeBuf), "%02u:%02u",
+        static_cast<unsigned>(config.lightEndHour), static_cast<unsigned>(config.lightEndMinute));
+    html += endTimeBuf;
     html += R"(" required>
-                <div class="input-hint">Hour when lights must turn off</div>
+                <div class="input-hint">Time (24h) when lights must turn off</div>
             </div>
 
             <div class="form-group">

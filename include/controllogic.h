@@ -37,7 +37,7 @@ enum class ManualOverride {
 struct ControlInputs {
 	ManualOverride override;
 	bool timeValid;
-	int hour;
+	int minutesSinceMidnight;  /// Current time of day as hour*60 + minute (0-1439)
 	bool sensorHealthy;
 	float lux;
 	bool relayOn;
@@ -45,8 +45,8 @@ struct ControlInputs {
 
 /// Schedule and light-level policy, set from ConfigManager/config.h
 struct ControlPolicy {
-	int startHour;
-	int endHour;
+	int startMinutes;  /// Schedule start as hour*60 + minute (0-1439)
+	int endMinutes;    /// Schedule end as hour*60 + minute (0-1439)
 	float thresholdLux;
 	float hysteresisLux;
 };
@@ -56,10 +56,11 @@ struct ControlOutput {
 	ControlReason reason;
 };
 
-/// Check whether an hour falls within [startHour, endHour)
+/// Check whether a time of day (minutes since midnight, 0-1439) falls
+/// within [startMinutes, endMinutes)
 /// start == end means 24-hour operation (always true); start > end means
 /// an overnight window that wraps past midnight
-[[nodiscard]] bool isHourInSchedule(int hour, int startHour, int endHour);
+[[nodiscard]] bool isTimeInSchedule(int minutesSinceMidnight, int startMinutes, int endMinutes);
 
 /// Check whether ambient light is low enough to want the lights on
 /// Hysteresis is applied symmetrically around thresholdLux: relay on keeps

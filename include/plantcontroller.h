@@ -74,7 +74,8 @@ public:
 
 	/// Update configuration from ConfigManager
 	/// We allow runtime configuration changes without recompiling
-	void updateConfiguration(int startHour, int endHour, float thresholdLux, float hysteresisLux);
+	void updateConfiguration(int startHour, int startMinute, int endHour, int endMinute,
+	                         float thresholdLux, float hysteresisLux);
 
 	/// Check whether the last TurnOn/TurnOff decision was deferred because
 	/// the relay's minimum switch interval hadn't elapsed yet. update() runs

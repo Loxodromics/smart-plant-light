@@ -91,6 +91,11 @@ private:
                                               long min, long max, long& out);
     [[nodiscard]] static bool parseFloatParam(AsyncWebServerRequest* request, const char* name,
                                                float min, float max, float& out);
+    /// Parses a strict "HH:MM" (24h) form field into hour/minute components;
+    /// we validate server-side rather than trusting the browser's time input,
+    /// since a scripted client can post anything
+    [[nodiscard]] static bool parseTimeParam(AsyncWebServerRequest* request, const char* name,
+                                              uint8_t& hourOut, uint8_t& minuteOut);
 
     /// Escapes & < > " ' for safe interpolation into HTML attributes/text
     [[nodiscard]] static String htmlEscape(const String& value);

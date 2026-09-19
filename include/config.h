@@ -28,9 +28,11 @@
 #define TIMEZONE_TZ "CET-1CEST,M3.5.0,M10.5.0/3"  /// POSIX TZ string; Berlin with automatic DST
 #define NTP_UPDATE_INTERVAL_MS 86400000  /// 24 hours
 
-/// Plant Light Schedule (24-hour format)
+/// Plant Light Schedule (24-hour HH:MM format)
 #define LIGHT_START_HOUR 8
+#define LIGHT_START_MINUTE 0
 #define LIGHT_END_HOUR 23
+#define LIGHT_END_MINUTE 0
 
 /// Light Sensor Configuration
 #define LIGHT_THRESHOLD_LUX 100.0  /// Turn on lights below this level
