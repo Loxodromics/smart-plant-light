@@ -141,9 +141,6 @@ private:
 
 	/// Set crash marker in RTC memory
 	void setCrashMarker();
-
-	/// Clear crash marker
-	void clearCrashMarker();
 };
 
 #endif /// SYSTEMDIAGNOSTICS_H

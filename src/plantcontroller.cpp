@@ -211,7 +211,7 @@ bool PlantController::isWithinSchedule() const {
 bool PlantController::isAmbientLightLow() const {
 	/// We implement hysteresis to prevent relay chattering
 	/// when ambient light hovers around the threshold
-	float currentLux = this->lightSensor->getAverageLux();
+	float currentLux = this->lightSensor->getCurrentLux();
 	bool relayCurrentlyOn = this->relayController->getRelayState();
 
 	/// Calculate upper and lower thresholds

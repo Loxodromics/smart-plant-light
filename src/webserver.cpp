@@ -298,8 +298,8 @@ String PlantWebServer::generateHTML() {
 
 String PlantWebServer::generateStatusSection() {
     /// Get current status from components
-    bool relayOn = this->relayController->isRelayOn();
-    float lightLevel = this->lightSensor->getAverageLux();
+    bool relayOn = this->relayController->getRelayState();
+    float lightLevel = this->lightSensor->getCurrentLux();
     String currentTime = getCurrentTimeString();
     int wifiSignal = this->wifiManager->getSignalStrength();
 
