@@ -60,15 +60,21 @@ External 5V Supply:
 
 The software follows a modular component-based architecture:
 
+Each component's declaration lives in `include/<name>.h`, implementation in `src/<name>.cpp`:
 ```
-src/
-├── main.cpp                 # Main integration and system orchestration
-├── config.h                 # Configuration constants and settings
-├── relaycontroller.h/.cpp   # Safe relay switching with anti-flicker
-├── lightsensor.h/.cpp       # VEML7700 interface with averaging
-├── wifimanager.h/.cpp       # WiFi connection and reconnection logic
-├── timemanager.h/.cpp       # NTP time synchronization and scheduling
-└── plantcontroller.h/.cpp   # Core decision logic integrating all components
+main.cpp                # Main integration and system orchestration
+relaycontroller.h/.cpp   # Safe relay switching with anti-flicker
+lightsensor.h/.cpp       # VEML7700 interface with averaging
+wifimanager.h/.cpp       # WiFi connection and reconnection logic
+timemanager.h/.cpp       # NTP time synchronization and scheduling
+plantcontroller.h/.cpp   # Core decision logic integrating all components
+systemdiagnostics.h/.cpp # Boot count, crash detection, health/perf metrics
+watchdogmanager.h/.cpp   # Hardware task watchdog (hang detection)
+configmanager.h/.cpp     # Runtime configuration persistence (Preferences API)
+webserver.h/.cpp         # Single-page status/config web UI (ESPAsyncWebServer)
+
+include/config.h          # Default configuration constants (fallback values, no .cpp)
+include/secrets.h         # WiFi credentials (gitignored, not in repo)
 ```
 
 ## Implemented Features
@@ -102,7 +108,7 @@ src/
 
 **TimeManager Class:**
 - NTP time synchronization with configurable servers
-- Timezone support (Berlin UTC+1)
+- Configurable UTC offset (`TIMEZONE_OFFSET_HOURS`, no automatic DST)
 - Schedule validation with day-boundary crossing support
 - Time health monitoring and sync failure handling
 - Automatic periodic resynchronization
@@ -143,6 +149,23 @@ src/
 - Reports the hardware's actual reset reason (watchdog/panic/brownout/power-on/etc.) into SystemDiagnostics on boot
 - Only subscribed after the boot-time WiFi/time wait loops complete, so a slow but healthy connection during startup doesn't false-trigger it
 
+### ✅ Phase 6: Configuration Persistence & Web Interface
+**ConfigManager Class:**
+- Runtime configuration (WiFi credentials, schedule, threshold, hysteresis, min switch interval, timezone) persisted via the ESP32 Preferences API
+- Settings survive reboots and power cycles; falls back to `config.h` defaults if nothing was ever saved
+- Per-field range validation before a save is accepted
+
+**PlantWebServer Class:**
+- Single-page status/config UI served over `ESPAsyncWebServer` when WiFi is connected
+- Real-time status display (schedule, light level, relay state, decision reason)
+- Editable settings form (schedule, threshold, hysteresis, min switch interval, timezone, WiFi credentials)
+- Manual override toggle (Auto / Force On / Force Off) via `ManualOverride`, bypassing schedule and light-level logic while still respecting the relay's minimum switch interval; not persisted - always resets to `Auto` on reboot
+- **No authentication and echoes the current WiFi password into the settings form** - trusted-LAN-only, not intended to be exposed beyond the local network
+- No REST/JSON API yet - the UI is server-rendered HTML forms only
+
+**WiFi Credentials:**
+- Moved out of `config.h` into a gitignored `secrets.h`; `config.h` keeps placeholder fallbacks for a fresh checkout
+
 ### ✅ Integration & System Features
 - **Comprehensive Status Display**: Real-time system health monitoring
 - **Automatic Error Recovery**: Self-healing component reinitialization
@@ -154,21 +177,22 @@ src/
 ## Configuration
 
 ### Key Settings (config.h)
+These are only the fallback defaults used if no runtime configuration was ever
+saved via the web UI - once saved, `ConfigManager`'s copy in flash (Preferences)
+takes precedence. WiFi credentials live in the gitignored `secrets.h`, not here.
 ```cpp
 // Hardware Configuration
 #define RELAY_PIN 2
 #define I2C_SDA_PIN 19  
 #define I2C_SCL_PIN 22
 
-// Network Configuration
-#define WIFI_SSID "Your_WiFi_Name"
-#define WIFI_PASSWORD "Your_WiFi_Password"
+// Network Configuration (fallback only - see secrets.h)
 #define NTP_SERVER "pool.ntp.org"
-#define TIMEZONE_OFFSET_HOURS 1  // Berlin = UTC+1
+#define TIMEZONE_OFFSET_HOURS 2  // UTC+2
 
 // Plant Light Schedule
-#define LIGHT_START_HOUR 6   // 6:00 AM
-#define LIGHT_END_HOUR 22    // 10:00 PM
+#define LIGHT_START_HOUR 8   // 8:00 AM
+#define LIGHT_END_HOUR 23    // 11:00 PM
 
 // Light Sensor Configuration
 #define LIGHT_THRESHOLD_LUX 100.0    // Turn on below this level
@@ -177,6 +201,7 @@ src/
 
 // Safety Configuration  
 #define MIN_SWITCH_INTERVAL_MS 60000 // Min 1 minute between switches
+#define WATCHDOG_TIMEOUT_MS 25000    // Must exceed WIFI_TIMEOUT_MS
 ```
 
 ## Hardware Lessons Learned
@@ -192,33 +217,10 @@ src/
 - **Testing Approach**: Validate components individually before integration
 - **Power Supply**: Adequate current capacity essential for reliable operation
 
-## Upcoming Features
+## Roadmap
 
-### Phase 6: User Interface & Configuration (Planned)
-- **Configuration Persistence**: Save settings to ESP32 flash memory (Preferences API)
-  - WiFi credentials storage
-  - Light schedules and thresholds
-  - Sensor calibration values
-  - Settings survive reboots and power cycles
-- **Web Interface**: Browser-based configuration and monitoring
-  - Real-time system status dashboard
-  - Editable configuration forms (schedules, thresholds, WiFi)
-  - Light level and relay state visualization
-  - Mobile-responsive design for smartphone access
-- **REST API**: Programmatic access for external integration
-
-### Phase 7: Home Automation Integration (Future)
-- **MQTT Support**: Integration with Home Assistant, OpenHAB
-- **Google Assistant/Alexa**: Voice control capabilities
-- **Smartphone App**: Dedicated mobile application
-- **Cloud Logging**: Historical data storage and analysis
-
-### Phase 8: Advanced Features (Future)
-- **Multiple Light Zones**: Control different plant areas independently
-- **Sunrise/Sunset Simulation**: Gradual light transitions
-- **Plant-Specific Profiles**: Customized lighting schedules per plant type
-- **Weather Integration**: Adjust based on weather forecasts
-- **Machine Learning**: Adaptive scheduling based on plant response
+Known gaps and feature ideas live in [ROADMAP.md](ROADMAP.md), separate from
+this file so it doesn't have to be re-read every time the backlog changes.
 
 ## Resuming Development
 
@@ -252,9 +254,8 @@ src/
    priority when set.
 
 3. **Configuration Updates**:
-   - Update WiFi credentials in `include/config.h`
-   - Adjust schedule times for testing
-   - Modify light threshold based on your environment
+   - Set WiFi credentials in `include/secrets.h` (gitignored; create it if missing)
+   - Schedule, threshold, hysteresis, etc. can be changed at runtime via the web UI without reflashing - `config.h` only supplies the defaults for a fresh device
 
 ### Testing Protocol
 1. **Component Tests**: Verify each component individually
@@ -275,10 +276,9 @@ src/
    - Validate relay module reliability
 
 ### Development Priorities
-1. **Current**: System is stable and operational
-2. **Short-term**: Advanced error recovery and diagnostics (Phase 5)
-3. **Medium-term**: Web interface and configuration persistence (Phase 6)
-4. **Long-term**: Home automation integration (Phase 7)
+System is stable and operational; diagnostics, watchdog, config persistence,
+and the web UI (Phases 1-6) are done. See [ROADMAP.md](ROADMAP.md) for known
+gaps and what to pick up next.
 
 ### Code Organization
 - **Modular Design**: Each component in separate files
@@ -303,5 +303,3 @@ The Smart Plant Light Controller successfully demonstrates:
 - **Safety**: Multiple protection layers for electrical safety
 - **Maintainability**: Clean, documented, modular code architecture
 - **Extensibility**: Foundation for advanced features and home automation integration
-
-This project serves as an excellent foundation for IoT automation systems, demonstrating professional software engineering practices, robust hardware integration, and intelligent decision-making algorithms.
