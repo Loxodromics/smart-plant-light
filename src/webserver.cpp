@@ -119,17 +119,39 @@ void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
         Serial.printf("  Hysteresis: %.1f lux\n", hysteresis);
     }
 
+    if (request->hasParam("min_switch_interval", true)) {
+        uint32_t intervalMs = request->getParam("min_switch_interval", true)->value().toInt() * 1000;
+        this->configManager->setMinSwitchInterval(intervalMs);
+        Serial.printf("  Min switch interval: %u ms\n", intervalMs);
+    }
+
     if (request->hasParam("timezone", true)) {
         int8_t timezone = request->getParam("timezone", true)->value().toInt();
+
+        /// We only need to reboot if the timezone actually changed - the
+        /// settings form always submits this field, so without this check
+        /// every single settings save would force a reboot
+        if (this->configManager->getConfig().timezoneOffsetHours != timezone) {
+            needsReboot = true;  /// Timezone change requires NTP resync
+        }
+
         this->configManager->setTimezone(timezone);
         Serial.printf("  Timezone: UTC%+d\n", timezone);
-        needsReboot = true;  /// Timezone change requires NTP resync
     }
 
     /// Validate and save configuration
     if (this->configManager->isValid()) {
         if (this->configManager->saveConfiguration()) {
             String message = "✅ Settings saved successfully!";
+            if (!needsReboot) {
+                /// We push the new values into the running components -
+                /// saving to flash alone doesn't affect the live decision
+                /// logic until the next reboot
+                const PlantLightConfig& config = this->configManager->getConfig();
+                this->plantController->updateConfiguration(config.lightStartHour, config.lightEndHour,
+                    config.lightThresholdLux, config.hysteresisLux);
+                this->relayController->setMinSwitchInterval(config.minSwitchIntervalMs);
+            }
             if (needsReboot) {
                 message += "<br><br>⚠️  WiFi or timezone changed. Device will reboot in 3 seconds...";
                 message += "<br><br><a href='/'>← Back to Dashboard</a>";
@@ -453,6 +475,14 @@ String PlantWebServer::generateSettingsSection() {
     html += String(config.hysteresisLux, 1);
     html += R"(" required>
                 <div class="input-hint">Dead band to prevent rapid switching (0 = disabled)</div>
+            </div>
+
+            <div class="form-group">
+                <label for="min_switch_interval">Anti-chatter Interval (seconds)</label>
+                <input type="number" id="min_switch_interval" name="min_switch_interval" min="1" max="600" value=")";
+    html += String(config.minSwitchIntervalMs / 1000);
+    html += R"(" required>
+                <div class="input-hint">Minimum time between relay switches, however sure the decision logic is</div>
             </div>
 
             <div class="form-group">

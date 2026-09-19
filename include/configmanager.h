@@ -21,6 +21,9 @@ struct PlantLightConfig {
     /// Hysteresis (dead band) to prevent relay chattering
     float hysteresisLux;  /// 0-100 lux
 
+    /// Minimum time between relay switches, regardless of decision logic
+    uint32_t minSwitchIntervalMs;  /// 1000-600000 ms
+
     /// Timezone offset from UTC
     int8_t timezoneOffsetHours;  /// -12 to +14
 
@@ -63,6 +66,7 @@ public:
     void setSchedule(uint8_t startHour, uint8_t endHour);
     void setLightThreshold(float thresholdLux);
     void setHysteresis(float hysteresisLux);
+    void setMinSwitchInterval(uint32_t intervalMs);
     void setTimezone(int8_t offsetHours);
 
     /// Print current configuration to serial (for debugging)
@@ -82,6 +86,7 @@ private:
     [[nodiscard]] bool validateSchedule() const;
     [[nodiscard]] bool validateThreshold() const;
     [[nodiscard]] bool validateHysteresis() const;
+    [[nodiscard]] bool validateMinSwitchInterval() const;
     [[nodiscard]] bool validateTimezone() const;
 };
 

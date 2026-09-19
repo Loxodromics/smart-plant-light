@@ -62,6 +62,9 @@ void ConfigManager::loadConfiguration() {
     /// Load hysteresis
     this->config.hysteresisLux = this->preferences.getFloat("sensor.hyster", 15.0);  /// Default 15 lux
 
+    /// Load minimum relay switch interval
+    this->config.minSwitchIntervalMs = this->preferences.getUInt("relay.minsw", MIN_SWITCH_INTERVAL_MS);
+
     /// Load timezone
     this->config.timezoneOffsetHours = this->preferences.getChar("tz.offset", TIMEZONE_OFFSET_HOURS);
 
@@ -94,6 +97,9 @@ bool ConfigManager::saveConfiguration() {
     /// Save hysteresis
     this->preferences.putFloat("sensor.hyster", this->config.hysteresisLux);
 
+    /// Save minimum relay switch interval
+    this->preferences.putUInt("relay.minsw", this->config.minSwitchIntervalMs);
+
     /// Save timezone
     this->preferences.putChar("tz.offset", this->config.timezoneOffsetHours);
 
@@ -121,6 +127,9 @@ void ConfigManager::resetToDefaults() {
     /// Set default hysteresis
     this->config.hysteresisLux = 15.0;  /// 15 lux dead band
 
+    /// Set default minimum relay switch interval
+    this->config.minSwitchIntervalMs = MIN_SWITCH_INTERVAL_MS;
+
     /// Set default timezone
     this->config.timezoneOffsetHours = TIMEZONE_OFFSET_HOURS;
 
@@ -129,7 +138,8 @@ void ConfigManager::resetToDefaults() {
 }
 
 bool ConfigManager::isValid() const {
-    return validateSchedule() && validateThreshold() && validateHysteresis() && validateTimezone();
+    return validateSchedule() && validateThreshold() && validateHysteresis() &&
+           validateMinSwitchInterval() && validateTimezone();
 }
 
 const PlantLightConfig& ConfigManager::getConfig() const {
@@ -161,6 +171,10 @@ void ConfigManager::setHysteresis(float hysteresisLux) {
     this->config.hysteresisLux = hysteresisLux;
 }
 
+void ConfigManager::setMinSwitchInterval(uint32_t intervalMs) {
+    this->config.minSwitchIntervalMs = intervalMs;
+}
+
 void ConfigManager::setTimezone(int8_t offsetHours) {
     this->config.timezoneOffsetHours = offsetHours;
 }
@@ -172,6 +186,7 @@ void ConfigManager::printConfiguration() const {
     Serial.printf("  Schedule: %02d:00 - %02d:00\n", this->config.lightStartHour, this->config.lightEndHour);
     Serial.printf("  Light Threshold: %.1f lux\n", this->config.lightThresholdLux);
     Serial.printf("  Hysteresis: %.1f lux\n", this->config.hysteresisLux);
+    Serial.printf("  Min switch interval: %u ms\n", this->config.minSwitchIntervalMs);
     Serial.printf("  Timezone: UTC%+d\n", this->config.timezoneOffsetHours);
     Serial.printf("  Config Version: %u\n", this->config.version);
 }
@@ -203,6 +218,17 @@ bool ConfigManager::validateHysteresis() const {
     /// Maximum 100 lux is a reasonable upper bound
     if (this->config.hysteresisLux < 0.0 || this->config.hysteresisLux > 100.0) {
         Serial.printf("❌ Invalid hysteresis: %.1f lux (must be 0-100)\n", this->config.hysteresisLux);
+        return false;
+    }
+    return true;
+}
+
+bool ConfigManager::validateMinSwitchInterval() const {
+    /// We require a nonzero floor to protect the relay hardware even though
+    /// this setting is primarily about not annoying the user with clicking -
+    /// 1s-10min covers everything from "barely any protection" to "very lazy"
+    if (this->config.minSwitchIntervalMs < 1000 || this->config.minSwitchIntervalMs > 600000) {
+        Serial.printf("❌ Invalid min switch interval: %u ms (must be 1000-600000)\n", this->config.minSwitchIntervalMs);
         return false;
     }
     return true;

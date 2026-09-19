@@ -84,6 +84,14 @@ void RelayController::emergencyStop() {
 	Serial.println("RelayController: EMERGENCY STOP activated");
 }
 
+void RelayController::setMinSwitchInterval(unsigned long intervalMs) {
+	this->minSwitchInterval = intervalMs;
+
+	Serial.print("RelayController: Minimum switch interval set to ");
+	Serial.print(intervalMs / 1000.0, 1);
+	Serial.println("s");
+}
+
 void RelayController::updateRelayHardware(bool state) {
 	/// We write directly to the GPIO pin to control the relay
 	/// LOW = relay OFF (normally open contacts open)

@@ -185,6 +185,7 @@ void initializeComponents() {
 	Serial.println("  🔌 Relay Controller...");
 	relayController = new RelayController(RELAY_PIN);
 	relayController->begin();
+	relayController->setMinSwitchInterval(config.minSwitchIntervalMs);
 	
 	/// We initialize light sensor
 	Serial.println("  💡 Light Sensor...");
@@ -277,6 +278,10 @@ void displaySystemConfiguration() {
 	Serial.print("⚡ Hysteresis: ");
 	Serial.print(config.hysteresisLux);
 	Serial.println(" lux");
+
+	Serial.print("🛡️  Anti-chatter interval: ");
+	Serial.print(config.minSwitchIntervalMs / 1000);
+	Serial.println("s");
 
 	Serial.print("🌐 Timezone: UTC");
 	Serial.print(config.timezoneOffsetHours >= 0 ? "+" : "");
