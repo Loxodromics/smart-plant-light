@@ -215,6 +215,14 @@ src/
    pio device monitor
    ```
 
+   **Wrong serial port picked?** macOS reassigns the `cu.usbserial-XXXX` suffix on
+   every USB (re)plug/sleep-wake, so a stale port can linger in VS Code. Fix it
+   in the **PlatformIO status bar at the bottom of VS Code** - click the port
+   chooser there and select the current device (cross-check with `pio device
+   list` if unsure which one is the board). `platformio.ini` also pins
+   `upload_port`/`monitor_port` as a fallback, but the status bar picker takes
+   priority when set.
+
 3. **Configuration Updates**:
    - Update WiFi credentials in `include/config.h`
    - Adjust schedule times for testing

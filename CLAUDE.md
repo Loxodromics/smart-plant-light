@@ -47,6 +47,7 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 - Two-stage decision logic: schedule check → light level check
 - Health monitoring and comprehensive logging
 - Core business logic for when lights should be on/off
+- Decisions are expressed via `ControlDecision` (`TurnOn`/`TurnOff`/`KeepCurrent`/`WaitForData`) paired with a `ControlReason` (e.g. `OutOfSchedule`, `InScheduleDark`, `SensorFailure`, `RelayBusy`) - use these enums rather than inventing new state when extending the decision logic
 
 **Hardware Abstraction Layer:**
 - **RelayController**: Safe relay switching with anti-flicker protection
@@ -97,7 +98,7 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 
 **Serial Monitor**: System provides comprehensive status output with emoji indicators for quick visual debugging.
 
-**Component Testing**: Each component can be tested individually - check existing test patterns in main.cpp.
+**Component Testing**: There is no unit test suite yet - `test/` and `lib/` only contain PlatformIO's default scaffolding READMEs. Validate behavior by checking existing test patterns in main.cpp (it doubles as a full integration test with status display functions) or `pio test` once a PlatformIO test suite is added.
 
 **Error Handling**: System continues operating with degraded functionality when components fail. Check health status methods.
 
