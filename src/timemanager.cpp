@@ -180,15 +180,6 @@ String TimeManager::getCurrentDateString() const {
 	return String(dateBuffer);
 }
 
-bool TimeManager::isTimeInRange(int startHour, int endHour) const {
-	if (!this->hasValidTime()) {
-		return false; /// We can't make time decisions without valid time
-	}
-	
-	int currentHour = this->getCurrentHour();
-	return this->isTimeInRangeWithDayBoundary(startHour, endHour, currentHour);
-}
-
 unsigned long TimeManager::getLastSyncTime() const {
 	return this->lastSuccessfulSync;
 }
@@ -213,17 +204,6 @@ bool TimeManager::shouldAttemptSync() const {
 	/// We don't attempt sync too frequently to avoid overloading NTP servers
 	const unsigned long minSyncInterval = 60000; /// Minimum 1 minute between attempts
 	return millis() - this->lastSyncAttempt >= minSyncInterval;
-}
-
-bool TimeManager::isTimeInRangeWithDayBoundary(int startHour, int endHour, int currentHour) const {
-	/// We handle normal ranges (e.g., 6 to 22)
-	if (startHour <= endHour) {
-		return currentHour >= startHour && currentHour < endHour;
-	}
-
-	/// We handle ranges that cross midnight (e.g., 22 to 6)
-	/// This means lights are on from 22:00 to 06:00 (overnight)
-	return currentHour >= startHour || currentHour < endHour;
 }
 
 unsigned long TimeManager::getFailedSyncCount() const {

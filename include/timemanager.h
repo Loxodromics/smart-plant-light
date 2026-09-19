@@ -54,10 +54,6 @@ public:
 	/// Get current date as formatted string (YYYY-MM-DD)
 	[[nodiscard]] String getCurrentDateString() const;
 	
-	/// Check if current time is within specified hour range
-	/// We use this for plant light scheduling logic
-	[[nodiscard]] bool isTimeInRange(int startHour, int endHour) const;
-	
 	/// Get Unix timestamp of last successful sync
 	[[nodiscard]] unsigned long getLastSyncTime() const;
 	
@@ -103,10 +99,6 @@ private:
 
 	/// Check if enough time has passed for next sync attempt
 	[[nodiscard]] bool shouldAttemptSync() const;
-	
-	/// Handle day boundary crossing for time ranges
-	/// We need special logic for ranges that cross midnight
-	[[nodiscard]] bool isTimeInRangeWithDayBoundary(int startHour, int endHour, int currentHour) const;
 };
 
 #endif /// TIMEMANAGER_H

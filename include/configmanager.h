@@ -18,7 +18,7 @@ struct PlantLightConfig {
     /// Light sensor threshold
     float lightThresholdLux;
 
-    /// Hysteresis (dead band) to prevent relay chattering
+    /// Applied symmetrically: lights turn on below threshold - h, off above threshold + h
     float hysteresisLux;  /// 0-100 lux
 
     /// Minimum time between relay switches, regardless of decision logic

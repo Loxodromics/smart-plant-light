@@ -258,6 +258,10 @@ this file so it doesn't have to be re-read every time the backlog changes.
    - Schedule, threshold, hysteresis, etc. can be changed at runtime via the web UI without reflashing - `config.h` only supplies the defaults for a fresh device
 
 ### Testing Protocol
+0. **Unit Tests**: `pio test -e native` runs the host-side tests for the
+   pure decision logic in `src/controllogic.cpp` (schedule windows,
+   hysteresis, override/schedule/sensor precedence)
+
 1. **Component Tests**: Verify each component individually
    - Relay switching (GPIO control)
    - Light sensor readings (I2C communication)

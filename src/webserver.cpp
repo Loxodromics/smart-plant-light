@@ -609,7 +609,7 @@ String PlantWebServer::generateSettingsSection() {
                 <input type="number" id="hysteresis" name="hysteresis" min="0" max="100" step="0.1" value=")";
     html += String(config.hysteresisLux, 1);
     html += R"(" required>
-                <div class="input-hint">Dead band to prevent rapid switching (0 = disabled)</div>
+                <div class="input-hint">Lights turn on below threshold - h and off above threshold + h (0 = disabled)</div>
             </div>
 
             <div class="form-group">

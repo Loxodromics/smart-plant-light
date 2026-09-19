@@ -402,46 +402,19 @@ void displayControlStatus() {
 	Serial.print("🤖 Control: ");
 	if (plantController->areAllComponentsHealthy()) {
 		Serial.print("✅ ACTIVE - ");
-		
+
 		/// We show the current logic decision
 		ControlDecision decision = plantController->getLastDecision();
 		ControlReason reason = plantController->getLastReason();
-		
-		switch (decision) {
-			case ControlDecision::TurnOn:
-				Serial.print("🌙 LIGHTS ON");
-				break;
-			case ControlDecision::TurnOff:
-				Serial.print("☀️ LIGHTS OFF");
-				break;
-			case ControlDecision::KeepCurrent:
-				Serial.print("↔️ NO CHANGE");
-				break;
-			case ControlDecision::WaitForData:
-				Serial.print("⏳ WAITING");
-				break;
-		}
-		
+
+		Serial.print(toString(decision));
 		Serial.print(" (");
-		switch (reason) {
-			case ControlReason::OutOfSchedule:
-				Serial.print("out of schedule");
-				break;
-			case ControlReason::InScheduleDark:
-				Serial.print("in schedule + dark");
-				break;
-			case ControlReason::InScheduleBright:
-				Serial.print("in schedule + bright");
-				break;
-			case ControlReason::ManualOverrideOn:
-			case ControlReason::ManualOverrideOff:
-				Serial.print("manual override");
-				break;
-			default:
-				Serial.print("system issue");
-				break;
+		Serial.print(toString(reason));
+		Serial.print(")");
+		if (plantController->isLastDecisionDeferred()) {
+			Serial.print(" [deferred: relay interval]");
 		}
-		Serial.println(")");
+		Serial.println();
 		
 		Serial.print("    Decisions made: ");
 		Serial.println(plantController->getDecisionCount());

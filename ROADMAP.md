@@ -6,10 +6,10 @@ already built.
 
 ## Known Gaps
 
-- **No automated test suite**: `test/` is still PlatformIO scaffolding. The
-  decision logic in `PlantController` switches mains power via a relay, so it
-  would benefit from host-side unit tests before other features build on top
-  of it.
+- **Limited automated tests**: the decision logic (`src/controllogic.cpp`)
+  has host-side Unity tests (`pio test -e native`), but everything that
+  depends on Arduino/ESP32 headers (config validation, schedule/time handling,
+  web request parsing) is still only verified on hardware.
 - **No web UI authentication**: `PlantWebServer` has no auth and echoes the
   current WiFi password into the settings form. Treat it as trusted-LAN-only
   until this is addressed - especially before adding any remote-reachable

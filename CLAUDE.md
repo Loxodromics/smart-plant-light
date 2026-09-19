@@ -47,7 +47,7 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 - Two-stage decision logic: schedule check → light level check
 - Health monitoring and comprehensive logging
 - Core business logic for when lights should be on/off
-- Decisions are expressed via `ControlDecision` (`TurnOn`/`TurnOff`/`KeepCurrent`/`WaitForData`) paired with a `ControlReason` (e.g. `OutOfSchedule`, `InScheduleDark`, `SensorFailure`, `RelayBusy`) - use these enums rather than inventing new state when extending the decision logic
+- Decisions are expressed via `ControlDecision` (`TurnOn`/`TurnOff`/`KeepCurrent`/`WaitForData`) paired with a `ControlReason` (e.g. `OutOfSchedule`, `InScheduleDark`, `SensorFailure`) - use these enums rather than inventing new state when extending the decision logic. The rules themselves live in the pure `decide()` function in `include/controllogic.h`/`src/controllogic.cpp` (no Arduino dependencies, so it's host-testable); extend the decision logic there, with tests in `test/test_controllogic/`. `PlantController` is just the adapter that gathers a `ControlInputs` snapshot from the hardware components and executes the resulting `ControlOutput` on the relay
 
 **Hardware Abstraction Layer:**
 - **RelayController**: Safe relay switching with anti-flicker protection
@@ -117,7 +117,7 @@ s.open()
 ```
 Only one process can hold the serial port open at a time - if `pio device monitor` (VS Code or CLI) already has it, a second connection attempt fails with "device reports readiness to read but returned no data (device disconnected or multiple access on port?)"; find and stop the other holder (`lsof /dev/cu.usbserial-XXXX`) first.
 
-**Component Testing**: There is no unit test suite yet - `test/` and `lib/` only contain PlatformIO's default scaffolding READMEs. Validate behavior by checking existing test patterns in main.cpp (it doubles as a full integration test with status display functions) or `pio test` once a PlatformIO test suite is added.
+**Component Testing**: `test/test_controllogic/` holds Unity tests for the pure decision logic in `controllogic.cpp` - run with `pio test -e native` (not built by `pio run`'s default `esp32dev` env). Everything else that still depends on Arduino/ESP32 headers has no unit test suite; validate it by checking existing test patterns in main.cpp (it doubles as a full integration test with status display functions).
 
 **Error Handling**: System continues operating with degraded functionality when components fail. Check health status methods.
 

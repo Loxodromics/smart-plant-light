@@ -1,10 +1,13 @@
 ///
 /// PlantController - Main decision logic for smart plant light control
-/// 
+///
 /// We integrate all components (WiFi, time, light sensor, relay) to make
 /// intelligent decisions about when to turn plant lights on or off.
 /// The controller implements a two-stage decision process: time-based
-/// scheduling combined with ambient light level detection.
+/// scheduling combined with ambient light level detection. The actual
+/// decision rules live in controllogic.h/decide() - this class is the
+/// Arduino-side adapter that gathers inputs from the hardware components
+/// and executes the resulting decision on the relay.
 ///
 
 #ifndef PLANTCONTROLLER_H
@@ -16,30 +19,7 @@
 #include "lightsensor.h"
 #include "relaycontroller.h"
 #include "systemdiagnostics.h"
-
-enum class ControlDecision {
-	TurnOn,          /// Lights should be ON (in schedule + dark)
-	TurnOff,         /// Lights should be OFF (out of schedule OR bright)
-	KeepCurrent,     /// No change needed (current state is correct)
-	WaitForData      /// Cannot decide (missing sensor data or time)
-};
-
-enum class ControlReason {
-	OutOfSchedule,       /// Outside time window
-	InScheduleDark,      /// In schedule and ambient light is low
-	InScheduleBright,    /// In schedule but ambient light is sufficient
-	NoValidTime,         /// Time synchronization not available
-	SensorFailure,       /// Light sensor not working
-	RelayBusy,           /// Relay cannot switch (safety interval)
-	ManualOverrideOn,    /// Manually forced on
-	ManualOverrideOff    /// Manually forced off
-};
-
-enum class ManualOverride {
-	Auto,      /// Automatic schedule + light-level control (default)
-	ForceOn,   /// Manually forced ON regardless of schedule/light level
-	ForceOff   /// Manually forced OFF regardless of schedule/light level
-};
+#include "controllogic.h"
 
 class PlantController {
 public:
@@ -50,33 +30,33 @@ public:
 	/// Initialize the plant controller
 	/// We set up initial state and validate all components
 	void begin();
-	
+
 	/// Main control loop - analyze conditions and make decisions
 	/// We check all inputs and decide whether to change relay state
 	void update();
-	
+
 	/// Force immediate evaluation and relay update if needed
 	/// We use this for manual override or immediate response
 	void forceUpdate();
-	
+
 	/// Get the last control decision made
 	[[nodiscard]] ControlDecision getLastDecision() const;
-	
+
 	/// Get the reason for the last decision
 	[[nodiscard]] ControlReason getLastReason() const;
-	
+
 	/// Get timestamp of last decision in milliseconds
 	[[nodiscard]] unsigned long getLastDecisionTime() const;
-	
+
 	/// Check if all required components are healthy
 	[[nodiscard]] bool areAllComponentsHealthy() const;
-	
+
 	/// Get number of successful control decisions made
 	[[nodiscard]] unsigned long getDecisionCount() const;
-	
+
 	/// Get number of actual relay state changes made
 	[[nodiscard]] unsigned long getRelayChanges() const;
-	
+
 	/// Set manual override mode (Auto / ForceOn / ForceOff)
 	/// We use this for the software on/off switch - it bypasses the
 	/// schedule and light-level logic entirely, but still respects the
@@ -96,6 +76,11 @@ public:
 	/// We allow runtime configuration changes without recompiling
 	void updateConfiguration(int startHour, int endHour, float thresholdLux, float hysteresisLux);
 
+	/// Check whether the last TurnOn/TurnOff decision was deferred because
+	/// the relay's minimum switch interval hadn't elapsed yet. update() runs
+	/// every CHECK_INTERVAL_MS, so a deferred decision is retried naturally
+	[[nodiscard]] bool isLastDecisionDeferred() const;
+
 private:
 	/// Component references
 	WiFiManager* wifiManager;
@@ -103,7 +88,7 @@ private:
 	LightSensor* lightSensor;
 	RelayController* relayController;
 	SystemDiagnostics* diagnostics;
-	
+
 	/// Control state
 	ControlDecision lastDecision;
 	ControlReason lastReason;
@@ -113,40 +98,22 @@ private:
 	unsigned long relayChanges;
 	ManualOverride manualOverride;
 	unsigned long updateInterval;
-	
-	/// Configuration
-	int scheduleStartHour;
-	int scheduleEndHour;
-	float lightThresholdLux;
-	float hysteresisLux;
+	bool lastDecisionDeferred;
+
+	/// Schedule and light-level policy passed to decide()
+	ControlPolicy policy;
 
 	/// Recovery tracking
 	unsigned long lastSensorRecoveryAttempt;
 	unsigned long lastTimeRecoveryAttempt;
 	unsigned long recoveryInterval;  /// Cooldown period between recovery attempts
 
-	/// Core decision logic methods
-	/// We break down the decision process into clear steps
-	[[nodiscard]] ControlDecision analyzeConditions(ControlReason& reason) const;
-	[[nodiscard]] bool isWithinSchedule() const;
-	[[nodiscard]] bool isAmbientLightLow() const;
-	[[nodiscard]] bool shouldRelayBeOn() const;
-	
+	/// Read the current state of all components into a ControlInputs snapshot
+	[[nodiscard]] ControlInputs gatherInputs() const;
+
 	/// Execute the control decision
 	/// We handle the actual relay switching with proper logging
-	void executeDecision(ControlDecision decision, ControlReason reason);
-	
-	/// Validate component health
-	[[nodiscard]] bool validateComponents(ControlReason& reason) const;
-	
-	/// Get descriptive string for decision type
-	[[nodiscard]] const char* getDecisionString(ControlDecision decision) const;
-	
-	/// Get descriptive string for decision reason
-	[[nodiscard]] const char* getReasonString(ControlReason reason) const;
-
-	/// Get descriptive string for manual override mode
-	[[nodiscard]] const char* getManualOverrideString(ManualOverride mode) const;
+	void executeDecision(const ControlOutput& out);
 };
 
 #endif /// PLANTCONTROLLER_H
