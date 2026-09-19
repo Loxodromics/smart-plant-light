@@ -34,10 +34,6 @@ public:
 	/// We provide this for diagnostics and calibration purposes
 	[[nodiscard]] float getLastRawLux() const;
 	
-	/// Check if current light level is below the configured threshold
-	/// We use this for the main plant light control decision
-	[[nodiscard]] bool isBelowThreshold(float thresholdLux) const;
-	
 	/// Check if sensor is responding and providing valid data
 	/// We use this to detect hardware failures or connection issues
 	[[nodiscard]] bool isSensorHealthy() const;
@@ -55,10 +51,6 @@ public:
 	/// Returns true if recovery successful, false if failed
 	[[nodiscard]] bool attemptRecovery();
 
-	/// Get consecutive failure count
-	/// We track failures to trigger recovery attempts
-	[[nodiscard]] unsigned long getConsecutiveFailures() const;
-
 private:
 	Adafruit_VEML7700 veml;
 	
@@ -74,8 +66,7 @@ private:
 	unsigned long readingCount;
 	unsigned long lastReadingTime;
 	bool sensorInitialized;
-	unsigned long consecutiveFailures;
-	
+
 	/// Calculate the current average from the buffer
 	/// We recalculate this each time to handle the circular buffer properly
 	void calculateAverage();

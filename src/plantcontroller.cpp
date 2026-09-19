@@ -33,6 +33,7 @@ PlantController::PlantController(WiFiManager* wifiManager, TimeManager* timeMana
 	, lastSensorRecoveryAttempt(0)
 	, lastTimeRecoveryAttempt(0)
 	, recoveryInterval(60000)  /// 1 minute cooldown between recovery attempts
+	, wifiOutageRecorded(false)
 {
 	/// We initialize all member variables for clean state
 }
@@ -254,8 +255,10 @@ void PlantController::attemptComponentRecovery() {
 		}
 	}
 
-	/// We check if time manager needs recovery
-	if (!this->timeManager->hasValidTime()) {
+	/// We check if time manager needs recovery - only worth attempting while
+	/// WiFi is up, since NTP without WiFi is a guaranteed failure that would
+	/// just inflate the failure/recovery counters every cooldown period
+	if (!this->timeManager->hasValidTime() && this->wifiManager->isConnected()) {
 		/// We only attempt recovery if cooldown period has passed
 		if (currentTime - this->lastTimeRecoveryAttempt >= this->recoveryInterval) {
 			this->lastTimeRecoveryAttempt = currentTime;
@@ -274,12 +277,16 @@ void PlantController::attemptComponentRecovery() {
 		}
 	}
 
-	/// WiFi manager already has auto-reconnection, we just track failures
+	/// WiFi manager already has auto-reconnection, we just track failures.
+	/// We record an extended outage once per episode rather than every tick,
+	/// since a day-long outage otherwise means thousands of redundant records
 	if (!this->wifiManager->isConnected()) {
-		/// We record the failure for diagnostics but let WiFiManager handle reconnection
 		unsigned long timeSinceLastConnection = this->wifiManager->getTimeSinceLastConnection();
-		if (timeSinceLastConnection > 300000) {  /// More than 5 minutes disconnected
+		if (timeSinceLastConnection > 300000 && !this->wifiOutageRecorded) {  /// More than 5 minutes disconnected
 			this->diagnostics->recordFailure(ComponentType::WiFi, "Extended disconnection");
+			this->wifiOutageRecorded = true;
 		}
+	} else {
+		this->wifiOutageRecorded = false;
 	}
 }

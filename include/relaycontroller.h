@@ -34,10 +34,6 @@ public:
 	/// Get time since last state change in milliseconds
 	[[nodiscard]] unsigned long getTimeSinceLastSwitch() const;
 	
-	/// Force relay to OFF state immediately (emergency stop)
-	/// We bypass safety delays in emergency situations
-	void emergencyStop();
-
 	/// Change the minimum time between relay switches at runtime
 	/// We allow this to be tuned from the web UI instead of only config.h
 	void setMinSwitchInterval(unsigned long intervalMs);

@@ -107,6 +107,7 @@ private:
 	unsigned long lastSensorRecoveryAttempt;
 	unsigned long lastTimeRecoveryAttempt;
 	unsigned long recoveryInterval;  /// Cooldown period between recovery attempts
+	bool wifiOutageRecorded;  /// Whether we've already recorded the current WiFi outage
 
 	/// Read the current state of all components into a ControlInputs snapshot
 	[[nodiscard]] ControlInputs gatherInputs() const;

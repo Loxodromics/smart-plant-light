@@ -57,7 +57,7 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 - **WatchdogManager**: Hardware task watchdog (`esp_task_wdt`) that force-resets the board if `loop()` ever hangs (e.g. a stuck I2C read); only subscribed after the boot-time WiFi/time wait loops complete, to avoid false-triggering on a slow but healthy boot
 
 **System-Level Components:**
-- **SystemDiagnostics**: Boot count, unexpected-reboot detection via `esp_reset_reason()`, per-component failure/recovery history, WiFi/sensor performance metrics, persisted via the ESP32 Preferences API
+- **SystemDiagnostics**: Boot count, unexpected-reboot detection via `esp_reset_reason()`, per-component failure/recovery history, WiFi/sensor performance metrics, persisted via the ESP32 Preferences API. Failure/recovery counters accumulate in RAM and are flushed to flash at most once every 5 minutes (`update()`, called from `loop()`); boot count and any fault record from `begin()` are still saved immediately so they survive a fast follow-up crash
 - **ConfigManager**: Runtime configuration (WiFi credentials, schedule, threshold, hysteresis, timezone) persisted via Preferences, with fallback to `config.h` defaults
 - **PlantWebServer**: Single-page status/config UI served over `ESPAsyncWebServer`, constructed and started unconditionally at boot (it binds to `IP_ADDR_ANY` and serves as soon as any interface has an address, so it doesn't need to wait for WiFi) - has no authentication and echoes the WiFi password into the settings form, so treat it as trusted-LAN-only. Handlers run on the `async_tcp` task, not the loop task, so they only parse, validate and enqueue a `WebRequest`; `PlantWebServer::processPendingRequests()`, called from `loop()`, is the only place that mutates controller/config state, blocks (e.g. the 3s pre-reboot delay), or sends the real response (via the library's request-continuation `pause()`/weak-pointer API). Future endpoints (e.g. a REST API) should follow the same pattern
 
@@ -105,11 +105,11 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 
 ## Development Tips
 
-**Serial Monitor**: System provides comprehensive status output with emoji indicators for quick visual debugging. `pio device monitor` requires an interactive TTY and fails outright (`UserSideException`) when run from a non-interactive shell/agent - for scripted or headless reads, open the port directly with pyserial instead, and explicitly clear DTR/RTS before opening or the board reads as completely silent (pyserial asserts both by default on open, which holds this board's auto-reset circuit in reset for as long as the port stays open):
+**Serial Monitor**: System provides comprehensive status output with emoji indicators for quick visual debugging. `pio device monitor` requires an interactive TTY and fails outright (`UserSideException`) when run from a non-interactive shell/agent - for scripted or headless reads, open the port directly with pyserial instead. Clearing DTR/RTS before opening is still required so the board isn't *held* in reset for the life of the connection, but opening the port resets it regardless on this adapter - expect a reboot and ~15s until WiFi is back up:
 ```python
 import serial
 s = serial.Serial()
-s.port = '/dev/cu.usbserial-XXXX'  # check `pio device list`; macOS reassigns this suffix on every USB (re)plug
+s.port = '/dev/cu.usbserial-XXXX'  # check `pio device list`
 s.baudrate = 115200
 s.dtr = False
 s.rts = False

@@ -15,6 +15,8 @@ SystemDiagnostics::SystemDiagnostics()
 	: bootTime(0)
 	, bootCount(0)
 	, lastResetReason(ESP_RST_UNKNOWN)
+	, dirty(false)
+	, lastPersistTime(0)
 	, wifiBufferIndex(0)
 	, wifiBufferFull(false)
 	, sensorBufferIndex(0)
@@ -54,14 +56,15 @@ void SystemDiagnostics::begin() {
 	/// We increment boot count
 	this->bootCount++;
 
-	/// We record the fault as a System failure, persisted with the bumped
-	/// boot count so it's attributable to this boot. recordFailure() already
-	/// saves, so we only need an explicit save on the non-fault path
+	/// We record the fault as a System failure, persisted immediately (not
+	/// via the dirty/rate-limited path) with the bumped boot count so it
+	/// survives a fast follow-up crash
 	if (this->wasLastResetAFault()) {
 		this->recordFailure(ComponentType::System, this->getLastResetReasonString());
-	} else {
-		this->savePersistentData();
 	}
+	this->savePersistentData();
+	this->dirty = false;
+	this->lastPersistTime = millis();
 
 	Serial.print("SystemDiagnostics: Boot #");
 	Serial.println(this->bootCount);
@@ -75,23 +78,17 @@ void SystemDiagnostics::begin() {
 	Serial.println("SystemDiagnostics: ✓ Initialized");
 }
 
-void SystemDiagnostics::recordStartup() {
-	Serial.println("SystemDiagnostics: System startup recorded");
-}
-
 void SystemDiagnostics::recordFailure(ComponentType component, const char* description) {
 	int idx = this->getComponentIndex(component);
 
 	this->failureCount[idx]++;
 	this->lastFailureTime[idx] = millis();
+	this->dirty = true;
 
 	Serial.print("SystemDiagnostics: Failure recorded - ");
 	Serial.print(this->getComponentName(component));
 	Serial.print(": ");
 	Serial.println(description);
-
-	/// We save updated failure counts
-	this->savePersistentData();
 }
 
 void SystemDiagnostics::recordRecovery(ComponentType component, bool successful) {
@@ -101,14 +98,20 @@ void SystemDiagnostics::recordRecovery(ComponentType component, bool successful)
 	if (successful) {
 		this->recoverySuccesses[idx]++;
 	}
+	this->dirty = true;
 
 	Serial.print("SystemDiagnostics: Recovery ");
 	Serial.print(successful ? "SUCCESSFUL" : "FAILED");
 	Serial.print(" - ");
 	Serial.println(this->getComponentName(component));
+}
 
-	/// We save updated recovery stats
-	this->savePersistentData();
+void SystemDiagnostics::update() {
+	if (this->dirty && millis() - this->lastPersistTime >= PERSIST_INTERVAL_MS) {
+		this->savePersistentData();
+		this->dirty = false;
+		this->lastPersistTime = millis();
+	}
 }
 
 void SystemDiagnostics::updateWiFiMetric(int rssi) {

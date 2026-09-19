@@ -43,9 +43,9 @@ public:
 	/// We read the hardware reset reason and load persistent counters
 	void begin();
 
-	/// Record system startup
-	/// We increment boot counter and check for unexpected reboots
-	void recordStartup();
+	/// Persist accumulated counters if dirty and the persist interval elapsed
+	/// We call this from loop() to rate-limit flash writes
+	void update();
 
 	/// Record a component failure
 	/// We track failures for diagnostics and recovery decisions
@@ -101,10 +101,15 @@ public:
 	[[nodiscard]] bool wasLastResetAFault() const;
 
 private:
+	/// Minimum interval between persistent counter writes
+	static constexpr unsigned long PERSIST_INTERVAL_MS = 300000;  /// 5 minutes
+
 	/// System tracking
 	unsigned long bootTime;
 	unsigned long bootCount;
 	esp_reset_reason_t lastResetReason;
+	bool dirty;
+	unsigned long lastPersistTime;
 
 	/// Failure tracking (per component)
 	unsigned long failureCount[5];  /// One per ComponentType

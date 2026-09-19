@@ -19,7 +19,6 @@ LightSensor::LightSensor()
 	, readingCount(0)
 	, lastReadingTime(0)
 	, sensorInitialized(false)
-	, consecutiveFailures(0)
 {
 	/// We allocate memory for the averaging buffer
 	/// Using dynamic allocation allows us to configure buffer size at compile time
@@ -67,7 +66,6 @@ bool LightSensor::begin() {
 bool LightSensor::updateReading() {
 	if (!this->sensorInitialized) {
 		Serial.println("LightSensor: Sensor not initialized");
-		this->consecutiveFailures++;
 		return false;
 	}
 
@@ -79,7 +77,6 @@ bool LightSensor::updateReading() {
 	if (isnan(newReading) || newReading < 0 || newReading > 120000) {
 		Serial.print("LightSensor: Invalid reading detected: ");
 		Serial.println(newReading);
-		this->consecutiveFailures++;
 		return false;
 	}
 
@@ -87,7 +84,6 @@ bool LightSensor::updateReading() {
 	this->lastRawLux = newReading;
 	this->lastReadingTime = millis();
 	this->readingCount++;
-	this->consecutiveFailures = 0; /// Reset on successful reading
 
 	/// We add the new reading to our averaging buffer
 	this->addToBuffer(newReading);
@@ -102,11 +98,6 @@ float LightSensor::getCurrentLux() const {
 
 float LightSensor::getLastRawLux() const {
 	return this->lastRawLux;
-}
-
-bool LightSensor::isBelowThreshold(float thresholdLux) const {
-	/// We use the averaged value for threshold comparison to avoid flickering
-	return this->currentAverageLux < thresholdLux;
 }
 
 bool LightSensor::isSensorHealthy() const {
@@ -190,16 +181,11 @@ bool LightSensor::attemptRecovery() {
 	/// We attempt to reinitialize the sensor
 	if (this->begin()) {
 		Serial.println("LightSensor: ✓ Recovery successful");
-		this->consecutiveFailures = 0;
 		return true;
 	} else {
 		Serial.println("LightSensor: ✗ Recovery failed");
 		return false;
 	}
-}
-
-unsigned long LightSensor::getConsecutiveFailures() const {
-	return this->consecutiveFailures;
 }
 
 void LightSensor::resetI2CBus() {

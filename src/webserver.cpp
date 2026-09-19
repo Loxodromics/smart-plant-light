@@ -655,7 +655,7 @@ String PlantWebServer::generateSettingsSection() {
 }
 
 String PlantWebServer::getCurrentTimeString() {
-    if (!this->timeManager->isTimeValid()) {
+    if (!this->timeManager->hasValidTime()) {
         return "---";
     }
 

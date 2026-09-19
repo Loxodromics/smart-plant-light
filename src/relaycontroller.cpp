@@ -74,16 +74,6 @@ unsigned long RelayController::getTimeSinceLastSwitch() const {
 	return millis() - this->lastSwitchTime;
 }
 
-void RelayController::emergencyStop() {
-	/// We bypass all safety delays in emergency situations
-	/// This is for situations where immediate shutdown is critical
-	this->updateRelayHardware(false);
-	this->currentState = false;
-	this->lastSwitchTime = millis();
-	
-	Serial.println("RelayController: EMERGENCY STOP activated");
-}
-
 void RelayController::setMinSwitchInterval(unsigned long intervalMs) {
 	this->minSwitchInterval = intervalMs;
 

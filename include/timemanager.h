@@ -29,7 +29,9 @@ public:
 	[[nodiscard]] bool isStarted() const;
 	
 	/// Update time from NTP server if needed
-	/// We check if it's time for a sync and perform it if necessary
+	/// We drive our own sync schedule (needsSync()/shouldAttemptSync()) rather
+	/// than relying on the NTPClient library's internal update() - it force-syncs
+	/// on every call while unsynced, which blocks the loop up to 1s per iteration
 	void update();
 	
 	/// Force immediate time synchronization
@@ -75,13 +77,6 @@ public:
 	/// Attempt recovery from time sync failure
 	/// We force immediate resync and clear stale state
 	[[nodiscard]] bool attemptRecovery();
-
-	/// Update timezone offset
-	/// We allow runtime timezone changes without recompiling
-	void setTimezoneOffset(int offsetHours);
-
-	/// Check if time is valid (synced and not stale)
-	[[nodiscard]] bool isTimeValid() const;
 
 private:
 	WiFiUDP ntpUDP;

@@ -109,10 +109,6 @@ bool WiFiManager::connect() {
 	}
 }
 
-WiFiStatus WiFiManager::getStatus() const {
-	return this->currentStatus;
-}
-
 bool WiFiManager::isConnected() const {
 	return this->currentStatus == WiFiStatus::Connected && WiFi.status() == WL_CONNECTED;
 }
@@ -136,14 +132,6 @@ unsigned long WiFiManager::getTimeSinceLastConnection() const {
 		return ULONG_MAX; /// We return max value if never connected
 	}
 	return millis() - this->lastSuccessfulConnection;
-}
-
-void WiFiManager::forceReconnect() {
-	Serial.println("WiFiManager: Forcing reconnection...");
-	WiFi.disconnect();
-	delay(100);
-	this->currentStatus = WiFiStatus::Disconnected;
-	this->connect();
 }
 
 unsigned long WiFiManager::getConnectionAttempts() const {

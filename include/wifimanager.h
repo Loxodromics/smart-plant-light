@@ -36,9 +36,6 @@ public:
 	/// Returns true if connection successful, false if failed or timeout
 	[[nodiscard]] bool connect();
 	
-	/// Get current WiFi connection status
-	[[nodiscard]] WiFiStatus getStatus() const;
-	
 	/// Check if WiFi is currently connected
 	[[nodiscard]] bool isConnected() const;
 	
@@ -52,11 +49,7 @@ public:
 	
 	/// Get time since last successful connection in milliseconds
 	[[nodiscard]] unsigned long getTimeSinceLastConnection() const;
-	
-	/// Force immediate reconnection attempt
-	/// We use this when we detect connection issues
-	void forceReconnect();
-	
+
 	/// Get number of connection attempts since startup
 	[[nodiscard]] unsigned long getConnectionAttempts() const;
 

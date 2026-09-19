@@ -66,7 +66,6 @@ void setup() {
 	Serial.println("🔧 Initializing System Diagnostics...");
 	diagnostics = new SystemDiagnostics();
 	diagnostics->begin();
-	diagnostics->recordStartup();
 	Serial.println();
 
 	/// We initialize I2C for the light sensor
@@ -151,6 +150,9 @@ void loop() {
 
 	/// We run the main plant control logic
 	plantController->update();
+
+	/// We persist accumulated diagnostics counters if the rate limit allows
+	diagnostics->update();
 
 	/// We feed the watchdog last - only a loop iteration that actually
 	/// completed reaches this, so a genuine hang (e.g. a stuck I2C read)

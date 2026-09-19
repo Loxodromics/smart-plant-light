@@ -8,6 +8,7 @@
 
 #include "timemanager.h"
 #include "config.h"
+#include <time.h>
 
 TimeManager::TimeManager(const char* ntpServer, int timezoneOffsetHours)
 	: ntpServer(ntpServer)
@@ -35,12 +36,11 @@ void TimeManager::begin() {
 	}
 	this->started = true;
 
-	/// We initialize the NTP client
+	/// We initialize the NTP client. We drive sync timing ourselves
+	/// (update()/shouldAttemptSync()), so the library's own update interval
+	/// is irrelevant - we never call its auto-retrying update()
 	this->ntpClient->begin();
-	
-	/// We set update interval (how often client fetches internally)
-	this->ntpClient->setUpdateInterval(this->syncInterval);
-	
+
 	Serial.println("TimeManager: NTP client initialized");
 	Serial.print("NTP server: ");
 	Serial.println(this->ntpServer);
@@ -60,7 +60,9 @@ void TimeManager::update() {
 		return;
 	}
 
-	/// We check if it's time for a sync
+	/// We check if it's time for a sync. This is the only sync trigger -
+	/// we deliberately never call the library's own update(), which
+	/// force-syncs (blocking up to 1s) on every call while unsynced
 	if (this->needsSync() && this->shouldAttemptSync()) {
 		Serial.println("TimeManager: Performing scheduled sync...");
 		bool syncResult = this->syncTime();
@@ -68,9 +70,6 @@ void TimeManager::update() {
 			Serial.println("TimeManager: Scheduled sync failed, will retry later");
 		}
 	}
-	
-	/// We update the NTP client's internal state
-	this->ntpClient->update();
 }
 
 bool TimeManager::syncTime() {
@@ -148,35 +147,15 @@ String TimeManager::getCurrentDateString() const {
 	if (!this->hasValidTime()) {
 		return "No Date Available";
 	}
-	
-	/// We format the date manually since getFormattedDate() is not available
-	/// We get the epoch time and format it
-	unsigned long epochTime = this->ntpClient->getEpochTime();
-	
-	/// We calculate date components from epoch time
-	/// This is a simplified calculation for basic date display
-	unsigned long daysSinceEpoch = epochTime / 86400;
-	unsigned long year = 1970;
-	unsigned long month = 1;
-	unsigned long day = 1;
-	
-	/// We add approximate years (accounting for leap years)
-	while (daysSinceEpoch >= 365) {
-		bool isLeapYear = ((year % 4 == 0) && (year % 100 != 0)) || (year % 400 == 0);
-		unsigned long daysThisYear = isLeapYear ? 366 : 365;
-		
-		if (daysSinceEpoch >= daysThisYear) {
-			daysSinceEpoch -= daysThisYear;
-			year++;
-		} else {
-			break;
-		}
-	}
-	
-	/// We format as simple date string
-	char dateBuffer[32];
-	snprintf(dateBuffer, sizeof(dateBuffer), "%04lu-%02lu-%02lu (%s)", 
-			year, month, day + daysSinceEpoch, this->ntpClient->getFormattedTime().c_str());
+
+	/// getEpochTime() already includes our timezone offset, so gmtime_r
+	/// yields the local calendar date directly
+	time_t t = this->ntpClient->getEpochTime();
+	struct tm tm;
+	gmtime_r(&t, &tm);
+
+	char dateBuffer[16];
+	strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &tm);
 	return String(dateBuffer);
 }
 
@@ -201,8 +180,13 @@ unsigned long TimeManager::getSyncCount() const {
 }
 
 bool TimeManager::shouldAttemptSync() const {
-	/// We don't attempt sync too frequently to avoid overloading NTP servers
-	const unsigned long minSyncInterval = 60000; /// Minimum 1 minute between attempts
+	/// We retry faster while we have no time at all - this covers the 30s
+	/// boot wait loop and a late WiFi connect - and fall back to the slower,
+	/// server-friendly interval once we have a valid time to fall back on
+	static constexpr unsigned long RETRY_INTERVAL_UNSYNCED_MS = 10000;
+	static constexpr unsigned long RETRY_INTERVAL_SYNCED_MS = 60000;
+
+	unsigned long minSyncInterval = this->timeValid ? RETRY_INTERVAL_SYNCED_MS : RETRY_INTERVAL_UNSYNCED_MS;
 	return millis() - this->lastSyncAttempt >= minSyncInterval;
 }
 
@@ -231,29 +215,6 @@ bool TimeManager::attemptRecovery() {
 		Serial.println("TimeManager: ✗ Recovery failed");
 		return false;
 	}
-}
-
-void TimeManager::setTimezoneOffset(int offsetHours) {
-	/// We update the timezone offset
-	this->timezoneOffsetSeconds = offsetHours * 3600;
-
-	/// We update the NTP client with new timezone
-	/// Note: This requires recreating the NTP client
-	delete this->ntpClient;
-	this->ntpClient = new NTPClient(this->ntpUDP, this->ntpServer, this->timezoneOffsetSeconds);
-	this->ntpClient->begin();
-	this->ntpClient->setUpdateInterval(this->syncInterval);
-
-	Serial.print("TimeManager: Timezone updated to UTC");
-	Serial.print(offsetHours >= 0 ? "+" : "");
-	Serial.println(offsetHours);
-
-	/// We force immediate resync with new timezone
-	this->syncTime();
-}
-
-bool TimeManager::isTimeValid() const {
-	return this->hasValidTime();
 }
 
 bool TimeManager::isStarted() const {
