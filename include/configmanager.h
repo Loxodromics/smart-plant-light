@@ -24,8 +24,9 @@ struct PlantLightConfig {
     /// Minimum time between relay switches, regardless of decision logic
     uint32_t minSwitchIntervalMs;  /// 1000-600000 ms
 
-    /// Timezone offset from UTC
-    int8_t timezoneOffsetHours;  /// -12 to +14
+    /// POSIX TZ string (e.g. "CET-1CEST,M3.5.0,M10.5.0/3"); an unparsable
+    /// string makes libc fall back to UTC
+    char timezone[48];
 
     /// Configuration version for future migration
     uint32_t version;
@@ -75,7 +76,7 @@ public:
     void setLightThreshold(float thresholdLux);
     void setHysteresis(float hysteresisLux);
     void setMinSwitchInterval(uint32_t intervalMs);
-    void setTimezone(int8_t offsetHours);
+    void setTimezone(const char* posixTz);
 
     /// Print current configuration to serial (for debugging)
     void printConfiguration() const;
@@ -87,8 +88,10 @@ private:
     /// Preferences namespace
     static constexpr const char* NAMESPACE = "plantlight";
 
-    /// Current configuration version
-    static constexpr uint32_t CONFIG_VERSION = 1;
+    /// Current configuration version - bumped when the stored layout changes
+    /// in a way loadConfiguration() must handle. First real use: v1 stored a
+    /// UTC hour offset ("tz.offset"), v2 stores a POSIX TZ string ("tz.posix")
+    static constexpr uint32_t CONFIG_VERSION = 2;
 
     /// Validate individual configuration values
     [[nodiscard]] static bool validateSchedule(const PlantLightConfig& config);

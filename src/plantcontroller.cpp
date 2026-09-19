@@ -261,19 +261,21 @@ void PlantController::attemptComponentRecovery() {
 	if (!this->timeManager->hasValidTime() && this->wifiManager->isConnected()) {
 		/// We only attempt recovery if cooldown period has passed
 		if (currentTime - this->lastTimeRecoveryAttempt >= this->recoveryInterval) {
-			this->lastTimeRecoveryAttempt = currentTime;
-
 			Serial.println("PlantController: Time invalid, triggering recovery");
-			this->diagnostics->recordFailure(ComponentType::Time, "Time validation failed");
 
-			bool recovered = this->timeManager->attemptRecovery();
-			this->diagnostics->recordRecovery(ComponentType::Time, recovered);
-
-			if (recovered) {
-				Serial.println("PlantController: ✓ Time recovery successful");
-			} else {
-				Serial.println("PlantController: ✗ Time recovery failed");
+			/// Recovery is asynchronous - attemptRecovery() just restarts
+			/// SNTP, and the outcome lands in hasValidTime() seconds later, so
+			/// we can't grade it here. Being back in this branch a full
+			/// interval later means the previous attempt failed; a successful
+			/// one never returns here and so stays unrecorded - fine for counts
+			if (this->lastTimeRecoveryAttempt != 0) {
+				this->diagnostics->recordFailure(ComponentType::Time, "Time validation failed");
+				this->diagnostics->recordRecovery(ComponentType::Time, false);
 			}
+
+			this->lastTimeRecoveryAttempt = currentTime;
+			this->timeManager->attemptRecovery();
+			Serial.println("PlantController: ⏳ SNTP restart pending, checked on next interval");
 		}
 	}
 

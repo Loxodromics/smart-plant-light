@@ -25,7 +25,7 @@
 
 /// Time Configuration
 #define NTP_SERVER "pool.ntp.org"
-#define TIMEZONE_OFFSET_HOURS 2  /// Berlin: UTC+1 in winter, UTC+2 in summer - DST is not applied automatically, adjust via the web UI (SNTP/POSIX TZ is a roadmap item)
+#define TIMEZONE_TZ "CET-1CEST,M3.5.0,M10.5.0/3"  /// POSIX TZ string; Berlin with automatic DST
 #define NTP_UPDATE_INTERVAL_MS 86400000  /// 24 hours
 
 /// Plant Light Schedule (24-hour format)

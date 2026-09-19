@@ -53,12 +53,12 @@ This is an ESP32-based IoT plant lighting controller with a component-based arch
 - **RelayController**: Safe relay switching with anti-flicker protection
 - **LightSensor**: VEML7700 I2C sensor with averaging buffer; self-heals via `attemptRecovery()` (I2C bus reset + sensor reinit) when `isSensorHealthy()` reports no successful reading within the last minute, or no sample since the last buffer reset (boot, or post-recovery before the next successful read)
 - **WiFiManager**: Robust WiFi connection with auto-reconnection
-- **TimeManager**: NTP synchronization with timezone support
+- **TimeManager**: built-in SNTP (`configTzTime`) with a POSIX TZ string; non-blocking, DST-aware
 - **WatchdogManager**: Hardware task watchdog (`esp_task_wdt`) that force-resets the board if `loop()` ever hangs (e.g. a stuck I2C read); only subscribed after the boot-time WiFi/time wait loops complete, to avoid false-triggering on a slow but healthy boot
 
 **System-Level Components:**
 - **SystemDiagnostics**: Boot count, unexpected-reboot detection via `esp_reset_reason()`, per-component failure/recovery history, WiFi/sensor performance metrics, persisted via the ESP32 Preferences API. Failure/recovery counters accumulate in RAM and are flushed to flash at most once every 5 minutes (`update()`, called from `loop()`); boot count and any fault record from `begin()` are still saved immediately so they survive a fast follow-up crash
-- **ConfigManager**: Runtime configuration (WiFi credentials, schedule, threshold, hysteresis, timezone) persisted via Preferences, with fallback to `config.h` defaults
+- **ConfigManager**: Runtime configuration (WiFi credentials, schedule, threshold, hysteresis, timezone) persisted via Preferences, with fallback to `config.h` defaults; versioned storage where `loadConfiguration()` migrates old layouts (v1 UTC hour offset -> v2 POSIX TZ string)
 - **PlantWebServer**: Single-page status/config UI served over `ESPAsyncWebServer`, constructed and started unconditionally at boot (it binds to `IP_ADDR_ANY` and serves as soon as any interface has an address, so it doesn't need to wait for WiFi) - has no authentication and echoes the WiFi password into the settings form, so treat it as trusted-LAN-only. Handlers run on the `async_tcp` task, not the loop task, so they only parse, validate and enqueue a `WebRequest`; `PlantWebServer::processPendingRequests()`, called from `loop()`, is the only place that mutates controller/config state, blocks (e.g. the 3s pre-reboot delay), or sends the real response (via the library's request-continuation `pause()`/weak-pointer API). Future endpoints (e.g. a REST API) should follow the same pattern
 
 `TimeManager` is likewise always constructed at boot; NTP sync only starts (via `begin()`) once WiFi first connects, so the device is never stuck in a null-pointer crash loop when it boots without WiFi.

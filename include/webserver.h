@@ -26,7 +26,7 @@ enum class WebRequestType {
 struct WebRequest {
     WebRequestType type;
     PlantLightConfig config;       /// SaveConfig: full validated candidate
-    bool needsReboot;              /// SaveConfig: WiFi creds or timezone changed
+    bool needsReboot;              /// SaveConfig: WiFi credentials changed
     ManualOverride override;       /// SetOverride
     AsyncWebServerRequestPtr request;
 };

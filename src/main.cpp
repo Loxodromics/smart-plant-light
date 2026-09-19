@@ -180,12 +180,11 @@ void initializeComponents() {
 	wifiManager = new WiFiManager(config.wifiSSID, config.wifiPassword);
 	wifiManager->begin();
 
-	/// We construct the time manager unconditionally - constructing the
-	/// NTPClient doesn't touch the network, so this is safe even before
-	/// WiFi connects. It's begin()-ed once WiFi first connects (see
-	/// startNetworkServicesIfNeeded())
+	/// We construct the time manager unconditionally - constructing it only
+	/// copies the TZ string; the SNTP client isn't started until begin()
+	/// runs once WiFi first connects (see startNetworkServicesIfNeeded())
 	Serial.println("  ⏰ Time Manager...");
-	timeManager = new TimeManager(NTP_SERVER, config.timezoneOffsetHours);
+	timeManager = new TimeManager(NTP_SERVER, config.timezone);
 
 	/// We initialize relay controller (must be first for safety)
 	Serial.println("  🔌 Relay Controller...");
@@ -301,9 +300,8 @@ void displaySystemConfiguration() {
 	Serial.print(config.minSwitchIntervalMs / 1000);
 	Serial.println("s");
 
-	Serial.print("🌐 Timezone: UTC");
-	Serial.print(config.timezoneOffsetHours >= 0 ? "+" : "");
-	Serial.println(config.timezoneOffsetHours);
+	Serial.print("🌐 Timezone: ");
+	Serial.println(config.timezone);
 
 	Serial.print("🔄 Check interval: ");
 	Serial.print(CHECK_INTERVAL_MS / 1000);

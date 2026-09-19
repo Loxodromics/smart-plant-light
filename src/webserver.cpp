@@ -172,6 +172,7 @@ void PlantWebServer::applyConfig(const PlantLightConfig& config) {
     this->plantController->updateConfiguration(config.lightStartHour, config.lightEndHour,
         config.lightThresholdLux, config.hysteresisLux);
     this->relayController->setMinSwitchInterval(config.minSwitchIntervalMs);
+    this->timeManager->setTimezone(config.timezone);
 }
 
 void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
@@ -180,7 +181,7 @@ void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
     /// must not touch controller/config state directly
     PlantLightConfig candidate = this->configManager->getConfig();
 
-    long startHour = 0, endHour = 0, minSwitchIntervalSec = 0, timezone = 0;
+    long startHour = 0, endHour = 0, minSwitchIntervalSec = 0;
     float threshold = 0, hysteresis = 0;
 
     if (!parseLongParam(request, "start_hour", 0, 23, startHour)) {
@@ -211,9 +212,17 @@ void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
             "❌ Invalid or missing field: min_switch_interval (must be 1-600 seconds).", true);
         return;
     }
-    if (!parseLongParam(request, "timezone", -12, 14, timezone)) {
+    /// POSIX TZ string, e.g. "CET-1CEST,M3.5.0,M10.5.0/3" - not syntax-checked
+    /// here; ConfigManager::validate only bounds the length
+    if (!request->hasParam("timezone", true)) {
         sendMessagePage(request, 400, "Invalid Configuration",
-            "❌ Invalid or missing field: timezone (must be -12 to +14).", true);
+            "❌ Missing field: timezone.", true);
+        return;
+    }
+    String newTimezone = request->getParam("timezone", true)->value();
+    if (newTimezone.length() == 0 || newTimezone.length() >= sizeof(candidate.timezone)) {
+        sendMessagePage(request, 400, "Invalid Configuration",
+            "❌ Invalid field: timezone (must be 1-47 characters).", true);
         return;
     }
     if (!request->hasParam("wifi_ssid", true) || !request->hasParam("wifi_pass", true)) {
@@ -225,16 +234,18 @@ void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
     String newSSID = request->getParam("wifi_ssid", true)->value();
     String newPassword = request->getParam("wifi_pass", true)->value();
 
+    /// Timezone now applies immediately via the SNTP-backed TimeManager, so
+    /// only changed WiFi credentials need a reboot
     bool needsReboot = strcmp(candidate.wifiSSID, newSSID.c_str()) != 0 ||
-                        strcmp(candidate.wifiPassword, newPassword.c_str()) != 0 ||
-                        candidate.timezoneOffsetHours != timezone;
+                        strcmp(candidate.wifiPassword, newPassword.c_str()) != 0;
 
     candidate.lightStartHour = static_cast<uint8_t>(startHour);
     candidate.lightEndHour = static_cast<uint8_t>(endHour);
     candidate.lightThresholdLux = threshold;
     candidate.hysteresisLux = hysteresis;
     candidate.minSwitchIntervalMs = static_cast<uint32_t>(minSwitchIntervalSec) * 1000;
-    candidate.timezoneOffsetHours = static_cast<int8_t>(timezone);
+    strncpy(candidate.timezone, newTimezone.c_str(), sizeof(candidate.timezone) - 1);
+    candidate.timezone[sizeof(candidate.timezone) - 1] = '\0';
     strncpy(candidate.wifiSSID, newSSID.c_str(), sizeof(candidate.wifiSSID) - 1);
     candidate.wifiSSID[sizeof(candidate.wifiSSID) - 1] = '\0';
     strncpy(candidate.wifiPassword, newPassword.c_str(), sizeof(candidate.wifiPassword) - 1);
@@ -317,7 +328,7 @@ void PlantWebServer::processPendingRequests() {
 
             String message = "✅ Settings saved successfully!";
             if (req.needsReboot) {
-                message += "<br><br>⚠️  WiFi or timezone changed. Device will reboot in 3 seconds...";
+                message += "<br><br>⚠️  WiFi credentials changed. Device will reboot in 3 seconds...";
                 message += "<br><br><a href='/'>← Back to Dashboard</a>";
                 if (auto request = req.request.lock()) {
                     sendMessagePage(request.get(), 200, "Settings Saved", message, false);
@@ -621,11 +632,11 @@ String PlantWebServer::generateSettingsSection() {
             </div>
 
             <div class="form-group">
-                <label for="timezone">Timezone Offset (UTC)</label>
-                <input type="number" id="timezone" name="timezone" min="-12" max="14" value=")";
-    html += String(config.timezoneOffsetHours);
+                <label for="timezone">Timezone (POSIX TZ)</label>
+                <input type="text" id="timezone" name="timezone" maxlength="47" value=")";
+    html += htmlEscape(String(config.timezone));
     html += R"(" required>
-                <div class="input-hint">Hours offset from UTC (e.g., Berlin = +1)</div>
+                <div class="input-hint">POSIX TZ string, e.g. CET-1CEST,M3.5.0,M10.5.0/3 (Berlin, automatic DST) or UTC0. Unparsable strings behave as UTC.</div>
             </div>
 
             <div class="form-group">
@@ -645,7 +656,7 @@ String PlantWebServer::generateSettingsSection() {
             <button type="submit">💾 Save Settings</button>
 
             <div class="warning">
-                ⚠️ Changing WiFi or timezone will reboot the device
+                ⚠️ Changing WiFi will reboot the device
             </div>
         </form>
     </div>

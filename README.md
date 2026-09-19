@@ -45,7 +45,7 @@ External 5V Supply:
 - **Language**: C++ with Arduino framework
 - **Libraries**: 
   - Adafruit VEML7700 Library
-  - NTPClient Library
+  - SNTP via the ESP32 Arduino core (built-in, no external NTP library)
   - WiFi (built-in)
 
 ### Coding Style Guidelines
@@ -108,10 +108,10 @@ include/secrets.h         # WiFi credentials (gitignored, not in repo)
 
 **TimeManager Class:**
 - NTP time synchronization with configurable servers
-- Configurable UTC offset (`TIMEZONE_OFFSET_HOURS`, no automatic DST)
+- POSIX TZ string (`TIMEZONE_TZ`, automatic DST via libc)
 - Schedule validation with day-boundary crossing support
 - Time health monitoring and sync failure handling
-- Automatic periodic resynchronization
+- Automatic periodic resynchronization (background SNTP, non-blocking)
 
 ### ✅ Phase 4: Core Decision Logic
 **PlantController Class:**
@@ -188,7 +188,7 @@ takes precedence. WiFi credentials live in the gitignored `secrets.h`, not here.
 
 // Network Configuration (fallback only - see secrets.h)
 #define NTP_SERVER "pool.ntp.org"
-#define TIMEZONE_OFFSET_HOURS 2  // UTC+2
+#define TIMEZONE_TZ "CET-1CEST,M3.5.0,M10.5.0/3"  // Berlin, automatic DST
 
 // Plant Light Schedule
 #define LIGHT_START_HOUR 8   // 8:00 AM

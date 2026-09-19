@@ -52,6 +52,8 @@ already built.
 - Vacation mode (disable automation)
 - Sunrise/sunset based scheduling (future)
 
+`TimeManager::getLocalTime()` already provides a full DST-aware local `struct tm` as the foundation for weekday/minute-resolution scheduling here.
+
 **Sensor Calibration**:
 - Web-based calibration wizard
 - Reference light source comparison

@@ -47,6 +47,7 @@ void ConfigManager::loadConfiguration() {
 
     Serial.println("📂 ConfigManager: Loading saved configuration...");
     this->config.version = savedVersion;
+    bool needsMigrationSave = false;
 
     /// Load WiFi credentials
     this->preferences.getString("wifi.ssid", this->config.wifiSSID, sizeof(this->config.wifiSSID));
@@ -65,10 +66,26 @@ void ConfigManager::loadConfiguration() {
     /// Load minimum relay switch interval
     this->config.minSwitchIntervalMs = this->preferences.getUInt("relay.minsw", MIN_SWITCH_INTERVAL_MS);
 
-    /// Load timezone
-    this->config.timezoneOffsetHours = this->preferences.getChar("tz.offset", TIMEZONE_OFFSET_HOURS);
+    /// Load timezone. The version field's first real use: v1 stored a UTC
+    /// hour offset under "tz.offset", v2 stores a POSIX TZ string under
+    /// "tz.posix". An old offset can't be mapped to a DST-capable zone, so
+    /// a v1 config keeps the config.h default instead of migrating
+    if (savedVersion < 2) {
+        Serial.println("⚠️  ConfigManager: Timezone format changed in v2 - reset to config.h default");
+        needsMigrationSave = true;
+    } else {
+        String timezone = this->preferences.getString("tz.posix", TIMEZONE_TZ);
+        strncpy(this->config.timezone, timezone.c_str(), sizeof(this->config.timezone) - 1);
+        this->config.timezone[sizeof(this->config.timezone) - 1] = '\0';
+    }
 
     Serial.println("✅ ConfigManager: Configuration loaded from flash");
+
+    /// We write the migrated layout back once so the version bump sticks
+    /// and the migration message doesn't repeat on every boot
+    if (needsMigrationSave && this->saveConfiguration()) {
+        this->config.version = CONFIG_VERSION;
+    }
 }
 
 bool ConfigManager::saveConfiguration() {
@@ -101,7 +118,8 @@ bool ConfigManager::saveConfiguration() {
     this->preferences.putUInt("relay.minsw", this->config.minSwitchIntervalMs);
 
     /// Save timezone
-    this->preferences.putChar("tz.offset", this->config.timezoneOffsetHours);
+    this->preferences.putString("tz.posix", this->config.timezone);
+    this->preferences.remove("tz.offset");  /// Cleanup from the pre-v2 offset scheme
 
     Serial.println("✅ ConfigManager: Configuration saved to flash");
     return true;
@@ -131,7 +149,8 @@ void ConfigManager::resetToDefaults() {
     this->config.minSwitchIntervalMs = MIN_SWITCH_INTERVAL_MS;
 
     /// Set default timezone
-    this->config.timezoneOffsetHours = TIMEZONE_OFFSET_HOURS;
+    strncpy(this->config.timezone, TIMEZONE_TZ, sizeof(this->config.timezone) - 1);
+    this->config.timezone[sizeof(this->config.timezone) - 1] = '\0';
 
     /// Set version
     this->config.version = CONFIG_VERSION;
@@ -183,8 +202,11 @@ void ConfigManager::setMinSwitchInterval(uint32_t intervalMs) {
     this->config.minSwitchIntervalMs = intervalMs;
 }
 
-void ConfigManager::setTimezone(int8_t offsetHours) {
-    this->config.timezoneOffsetHours = offsetHours;
+void ConfigManager::setTimezone(const char* posixTz) {
+    if (posixTz != nullptr) {
+        strncpy(this->config.timezone, posixTz, sizeof(this->config.timezone) - 1);
+        this->config.timezone[sizeof(this->config.timezone) - 1] = '\0';
+    }
 }
 
 void ConfigManager::printConfiguration() const {
@@ -195,7 +217,7 @@ void ConfigManager::printConfiguration() const {
     Serial.printf("  Light Threshold: %.1f lux\n", this->config.lightThresholdLux);
     Serial.printf("  Hysteresis: %.1f lux\n", this->config.hysteresisLux);
     Serial.printf("  Min switch interval: %u ms\n", this->config.minSwitchIntervalMs);
-    Serial.printf("  Timezone: UTC%+d\n", this->config.timezoneOffsetHours);
+    Serial.printf("  Timezone: %s\n", this->config.timezone);
     Serial.printf("  Config Version: %u\n", this->config.version);
 }
 
@@ -243,10 +265,12 @@ bool ConfigManager::validateMinSwitchInterval(const PlantLightConfig& config) {
 }
 
 bool ConfigManager::validateTimezone(const PlantLightConfig& config) {
-    /// Timezone offset must be within valid range
-    /// UTC-12 (Baker Island) to UTC+14 (Kiribati)
-    if (config.timezoneOffsetHours < -12 || config.timezoneOffsetHours > 14) {
-        Serial.printf("❌ Invalid timezone: UTC%+d (must be -12 to +14)\n", config.timezoneOffsetHours);
+    /// We only check for a non-empty string that fits the buffer - POSIX TZ
+    /// syntax isn't validated here; an unparsable string makes libc fall
+    /// back to UTC, which the web UI hint documents
+    size_t len = strlen(config.timezone);
+    if (len == 0 || len >= sizeof(config.timezone)) {
+        Serial.println("❌ Invalid timezone: must be a non-empty POSIX TZ string (max 47 chars)");
         return false;
     }
     return true;
