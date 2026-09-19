@@ -129,6 +129,10 @@ void loop() {
 
 	startNetworkServicesIfNeeded();
 
+	/// We apply any settings/override changes queued by the web server's
+	/// async_tcp task and send their real responses - see webserver.h
+	webServer->processPendingRequests();
+
 	/// We update sensor readings regularly
 	if (currentTime - lastSensorUpdate >= sensorInterval) {
 		lastSensorUpdate = currentTime;

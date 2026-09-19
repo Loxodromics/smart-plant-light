@@ -58,8 +58,16 @@ public:
     /// Returns true if configuration is valid
     [[nodiscard]] bool isValid() const;
 
+    /// Validate an arbitrary candidate configuration without touching the
+    /// live config - lets callers (e.g. the web server) check a candidate
+    /// before committing it
+    [[nodiscard]] static bool validate(const PlantLightConfig& config);
+
     /// Get current configuration (read-only)
     [[nodiscard]] const PlantLightConfig& getConfig() const;
+
+    /// Replace the whole configuration in one assignment
+    void setConfig(const PlantLightConfig& config);
 
     /// Update configuration (does not save automatically)
     void setWiFiCredentials(const char* ssid, const char* password);
@@ -83,11 +91,11 @@ private:
     static constexpr uint32_t CONFIG_VERSION = 1;
 
     /// Validate individual configuration values
-    [[nodiscard]] bool validateSchedule() const;
-    [[nodiscard]] bool validateThreshold() const;
-    [[nodiscard]] bool validateHysteresis() const;
-    [[nodiscard]] bool validateMinSwitchInterval() const;
-    [[nodiscard]] bool validateTimezone() const;
+    [[nodiscard]] static bool validateSchedule(const PlantLightConfig& config);
+    [[nodiscard]] static bool validateThreshold(const PlantLightConfig& config);
+    [[nodiscard]] static bool validateHysteresis(const PlantLightConfig& config);
+    [[nodiscard]] static bool validateMinSwitchInterval(const PlantLightConfig& config);
+    [[nodiscard]] static bool validateTimezone(const PlantLightConfig& config);
 };
 
 #endif

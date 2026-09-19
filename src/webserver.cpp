@@ -1,5 +1,7 @@
 /// src/webserver.cpp
 #include "webserver.h"
+#include <cstdlib>
+#include <cmath>
 
 PlantWebServer::PlantWebServer(ConfigManager* configMgr,
                                PlantController* plantCtrl,
@@ -14,7 +16,9 @@ PlantWebServer::PlantWebServer(ConfigManager* configMgr,
       timeManager(timeMgr),
       wifiManager(wifiMgr),
       relayController(relayCtrl),
-      running(false) {
+      running(false),
+      rebootPending(false),
+      rebootRequestedAt(0) {
 }
 
 PlantWebServer::~PlantWebServer() {
@@ -74,141 +78,272 @@ void PlantWebServer::handleRoot(AsyncWebServerRequest* request) {
     request->send(200, "text/html", html);
 }
 
+bool PlantWebServer::parseLongParam(AsyncWebServerRequest* request, const char* name,
+                                     long min, long max, long& out) {
+    if (!request->hasParam(name, true)) {
+        return false;
+    }
+
+    const String& value = request->getParam(name, true)->value();
+    if (value.length() == 0) {
+        return false;
+    }
+
+    char* end = nullptr;
+    long parsed = strtol(value.c_str(), &end, 10);
+    if (end == value.c_str() || *end != '\0') {
+        return false;  /// empty or trailing garbage
+    }
+
+    if (parsed < min || parsed > max) {
+        return false;
+    }
+
+    out = parsed;
+    return true;
+}
+
+bool PlantWebServer::parseFloatParam(AsyncWebServerRequest* request, const char* name,
+                                      float min, float max, float& out) {
+    if (!request->hasParam(name, true)) {
+        return false;
+    }
+
+    const String& value = request->getParam(name, true)->value();
+    if (value.length() == 0) {
+        return false;
+    }
+
+    char* end = nullptr;
+    float parsed = strtof(value.c_str(), &end);
+    if (end == value.c_str() || *end != '\0') {
+        return false;
+    }
+
+    /// strtof accepts "nan", and NaN compares false against any bound, so
+    /// it would pass the range check (and ConfigManager::validate) silently
+    if (std::isnan(parsed) || parsed < min || parsed > max) {
+        return false;
+    }
+
+    out = parsed;
+    return true;
+}
+
+String PlantWebServer::htmlEscape(const String& value) {
+    String escaped;
+    escaped.reserve(value.length());
+    for (size_t i = 0; i < value.length(); i++) {
+        char c = value[i];
+        switch (c) {
+            case '&': escaped += "&amp;"; break;
+            case '<': escaped += "&lt;"; break;
+            case '>': escaped += "&gt;"; break;
+            case '"': escaped += "&quot;"; break;
+            case '\'': escaped += "&#39;"; break;
+            default: escaped += c; break;
+        }
+    }
+    return escaped;
+}
+
+void PlantWebServer::sendMessagePage(AsyncWebServerRequest* request, int code, const char* title,
+                                      const String& body, bool isError) {
+    String color = isError ? "#dc3545" : "#28a745";
+    String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>";
+    html += title;
+    html += "</title><style>body{font-family:Arial,sans-serif;max-width:600px;margin:50px auto;"
+            "padding:20px;background:#f0f0f0;}h2{color:";
+    html += color;
+    html += ";}</style></head><body><h2>";
+    html += title;
+    html += "</h2><p>";
+    html += body;
+    html += "</p></body></html>";
+
+    request->send(code, "text/html", html);
+}
+
+void PlantWebServer::applyConfig(const PlantLightConfig& config) {
+    /// The one place that pushes a validated config into running components -
+    /// saving to flash alone doesn't affect the live decision logic until
+    /// the next reboot. Always applied even when a reboot follows shortly
+    /// after; harmless and simpler than special-casing it away
+    this->plantController->updateConfiguration(config.lightStartHour, config.lightEndHour,
+        config.lightThresholdLux, config.hysteresisLux);
+    this->relayController->setMinSwitchInterval(config.minSwitchIntervalMs);
+}
+
 void PlantWebServer::handleSave(AsyncWebServerRequest* request) {
-    Serial.println("💾 WebServer: Processing configuration update...");
+    /// We validate a candidate copy so a rejected field never mutates the
+    /// live configuration - this handler runs on the async_tcp task and
+    /// must not touch controller/config state directly
+    PlantLightConfig candidate = this->configManager->getConfig();
 
-    bool needsReboot = false;
+    long startHour = 0, endHour = 0, minSwitchIntervalSec = 0, timezone = 0;
+    float threshold = 0, hysteresis = 0;
 
-    /// Extract form parameters
-    if (request->hasParam("wifi_ssid", true) && request->hasParam("wifi_pass", true)) {
-        String newSSID = request->getParam("wifi_ssid", true)->value();
-        String newPassword = request->getParam("wifi_pass", true)->value();
-
-        /// Check if WiFi credentials changed (requires reboot)
-        const PlantLightConfig& currentConfig = this->configManager->getConfig();
-        if (strcmp(currentConfig.wifiSSID, newSSID.c_str()) != 0 ||
-            strcmp(currentConfig.wifiPassword, newPassword.c_str()) != 0) {
-            needsReboot = true;
-        }
-
-        this->configManager->setWiFiCredentials(newSSID.c_str(), newPassword.c_str());
-        Serial.printf("  WiFi SSID: %s\n", newSSID.c_str());
+    if (!parseLongParam(request, "start_hour", 0, 23, startHour)) {
+        sendMessagePage(request, 400, "Invalid Configuration",
+            "❌ Invalid or missing field: start_hour (must be 0-23).", true);
+        return;
+    }
+    if (!parseLongParam(request, "end_hour", 0, 23, endHour)) {
+        sendMessagePage(request, 400, "Invalid Configuration",
+            "❌ Invalid or missing field: end_hour (must be 0-23).", true);
+        return;
+    }
+    if (!parseFloatParam(request, "threshold", 0.0f, 10000.0f, threshold)) {
+        sendMessagePage(request, 400, "Invalid Configuration",
+            "❌ Invalid or missing field: threshold (must be 0-10000).", true);
+        return;
+    }
+    if (!parseFloatParam(request, "hysteresis", 0.0f, 100.0f, hysteresis)) {
+        sendMessagePage(request, 400, "Invalid Configuration",
+            "❌ Invalid or missing field: hysteresis (must be 0-100).", true);
+        return;
+    }
+    /// Range-checked in seconds (1-600) *before* the caller multiplies by
+    /// 1000 - a 32-bit long overflows above ~2.1e6 s, so checking the
+    /// post-multiplication value would let huge inputs wrap around
+    if (!parseLongParam(request, "min_switch_interval", 1, 600, minSwitchIntervalSec)) {
+        sendMessagePage(request, 400, "Invalid Configuration",
+            "❌ Invalid or missing field: min_switch_interval (must be 1-600 seconds).", true);
+        return;
+    }
+    if (!parseLongParam(request, "timezone", -12, 14, timezone)) {
+        sendMessagePage(request, 400, "Invalid Configuration",
+            "❌ Invalid or missing field: timezone (must be -12 to +14).", true);
+        return;
+    }
+    if (!request->hasParam("wifi_ssid", true) || !request->hasParam("wifi_pass", true)) {
+        sendMessagePage(request, 400, "Invalid Configuration",
+            "❌ Missing field: wifi_ssid or wifi_pass.", true);
+        return;
     }
 
-    if (request->hasParam("start_hour", true)) {
-        uint8_t startHour = request->getParam("start_hour", true)->value().toInt();
-        uint8_t endHour = this->configManager->getConfig().lightEndHour;
+    String newSSID = request->getParam("wifi_ssid", true)->value();
+    String newPassword = request->getParam("wifi_pass", true)->value();
 
-        if (request->hasParam("end_hour", true)) {
-            endHour = request->getParam("end_hour", true)->value().toInt();
-        }
+    bool needsReboot = strcmp(candidate.wifiSSID, newSSID.c_str()) != 0 ||
+                        strcmp(candidate.wifiPassword, newPassword.c_str()) != 0 ||
+                        candidate.timezoneOffsetHours != timezone;
 
-        this->configManager->setSchedule(startHour, endHour);
-        Serial.printf("  Schedule: %02d:00 - %02d:00\n", startHour, endHour);
+    candidate.lightStartHour = static_cast<uint8_t>(startHour);
+    candidate.lightEndHour = static_cast<uint8_t>(endHour);
+    candidate.lightThresholdLux = threshold;
+    candidate.hysteresisLux = hysteresis;
+    candidate.minSwitchIntervalMs = static_cast<uint32_t>(minSwitchIntervalSec) * 1000;
+    candidate.timezoneOffsetHours = static_cast<int8_t>(timezone);
+    strncpy(candidate.wifiSSID, newSSID.c_str(), sizeof(candidate.wifiSSID) - 1);
+    candidate.wifiSSID[sizeof(candidate.wifiSSID) - 1] = '\0';
+    strncpy(candidate.wifiPassword, newPassword.c_str(), sizeof(candidate.wifiPassword) - 1);
+    candidate.wifiPassword[sizeof(candidate.wifiPassword) - 1] = '\0';
+
+    if (!ConfigManager::validate(candidate)) {
+        sendMessagePage(request, 400, "Invalid Configuration",
+            "❌ Configuration validation failed. Check serial monitor for details.", true);
+        return;
     }
 
-    if (request->hasParam("threshold", true)) {
-        float threshold = request->getParam("threshold", true)->value().toFloat();
-        this->configManager->setLightThreshold(threshold);
-        Serial.printf("  Threshold: %.1f lux\n", threshold);
-    }
+    WebRequest queued{};
+    queued.type = WebRequestType::SaveConfig;
+    queued.config = candidate;
+    queued.needsReboot = needsReboot;
+    queued.request = request->pause();
 
-    if (request->hasParam("hysteresis", true)) {
-        float hysteresis = request->getParam("hysteresis", true)->value().toFloat();
-        this->configManager->setHysteresis(hysteresis);
-        Serial.printf("  Hysteresis: %.1f lux\n", hysteresis);
-    }
-
-    if (request->hasParam("min_switch_interval", true)) {
-        uint32_t intervalMs = request->getParam("min_switch_interval", true)->value().toInt() * 1000;
-        this->configManager->setMinSwitchInterval(intervalMs);
-        Serial.printf("  Min switch interval: %u ms\n", intervalMs);
-    }
-
-    if (request->hasParam("timezone", true)) {
-        int8_t timezone = request->getParam("timezone", true)->value().toInt();
-
-        /// We only need to reboot if the timezone actually changed - the
-        /// settings form always submits this field, so without this check
-        /// every single settings save would force a reboot
-        if (this->configManager->getConfig().timezoneOffsetHours != timezone) {
-            needsReboot = true;  /// Timezone change requires NTP resync
-        }
-
-        this->configManager->setTimezone(timezone);
-        Serial.printf("  Timezone: UTC%+d\n", timezone);
-    }
-
-    /// Validate and save configuration
-    if (this->configManager->isValid()) {
-        if (this->configManager->saveConfiguration()) {
-            String message = "✅ Settings saved successfully!";
-            if (!needsReboot) {
-                /// We push the new values into the running components -
-                /// saving to flash alone doesn't affect the live decision
-                /// logic until the next reboot
-                const PlantLightConfig& config = this->configManager->getConfig();
-                this->plantController->updateConfiguration(config.lightStartHour, config.lightEndHour,
-                    config.lightThresholdLux, config.hysteresisLux);
-                this->relayController->setMinSwitchInterval(config.minSwitchIntervalMs);
-            }
-            if (needsReboot) {
-                message += "<br><br>⚠️  WiFi or timezone changed. Device will reboot in 3 seconds...";
-                message += "<br><br><a href='/'>← Back to Dashboard</a>";
-
-                /// Send response
-                request->send(200, "text/html",
-                    "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Settings Saved</title>"
-                    "<style>body{font-family:Arial,sans-serif;max-width:600px;margin:50px auto;"
-                    "padding:20px;background:#f0f0f0;}h2{color:#28a745;}</style></head>"
-                    "<body><h2>Settings Saved</h2><p>" + message + "</p></body></html>");
-
-                /// Schedule reboot
-                Serial.println("🔄 WebServer: Scheduling reboot in 3 seconds...");
-                delay(3000);
-                ESP.restart();
-            } else {
-                message += "<br><br>Changes applied immediately.";
-                message += "<br><br><a href='/'>← Back to Dashboard</a>";
-
-                request->send(200, "text/html",
-                    "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Settings Saved</title>"
-                    "<style>body{font-family:Arial,sans-serif;max-width:600px;margin:50px auto;"
-                    "padding:20px;background:#f0f0f0;}h2{color:#28a745;}</style></head>"
-                    "<body><h2>Settings Saved</h2><p>" + message + "</p></body></html>");
-            }
-        } else {
-            request->send(500, "text/html",
-                "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Save Failed</title>"
-                "<style>body{font-family:Arial,sans-serif;max-width:600px;margin:50px auto;"
-                "padding:20px;background:#f0f0f0;}h2{color:#dc3545;}</style></head>"
-                "<body><h2>Save Failed</h2><p>❌ Could not save configuration to flash memory.</p>"
-                "<p><a href='/'>← Back to Dashboard</a></p></body></html>");
-        }
-    } else {
-        request->send(400, "text/html",
-            "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Invalid Configuration</title>"
-            "<style>body{font-family:Arial,sans-serif;max-width:600px;margin:50px auto;"
-            "padding:20px;background:#f0f0f0;}h2{color:#dc3545;}</style></head>"
-            "<body><h2>Invalid Configuration</h2><p>❌ Configuration validation failed. Check serial monitor for details.</p>"
-            "<p><a href='/'>← Back to Dashboard</a></p></body></html>");
+    {
+        std::lock_guard<std::mutex> lock(this->pendingMutex);
+        this->pending.push_back(queued);
     }
 }
 
 void PlantWebServer::handleOverride(AsyncWebServerRequest* request) {
-    if (request->hasParam("mode", true)) {
-        String mode = request->getParam("mode", true)->value();
+    ManualOverride mode;
 
-        if (mode == "on") {
-            this->plantController->setManualOverride(ManualOverride::ForceOn);
-        } else if (mode == "off") {
-            this->plantController->setManualOverride(ManualOverride::ForceOff);
+    if (request->hasParam("mode", true)) {
+        String value = request->getParam("mode", true)->value();
+        if (value == "on") {
+            mode = ManualOverride::ForceOn;
+        } else if (value == "off") {
+            mode = ManualOverride::ForceOff;
+        } else if (value == "auto") {
+            mode = ManualOverride::Auto;
         } else {
-            this->plantController->setManualOverride(ManualOverride::Auto);
+            sendMessagePage(request, 400, "Invalid Request",
+                "❌ Invalid mode value (must be on, off, or auto).", true);
+            return;
+        }
+    } else {
+        sendMessagePage(request, 400, "Invalid Request", "❌ Missing field: mode.", true);
+        return;
+    }
+
+    WebRequest queued{};
+    queued.type = WebRequestType::SetOverride;
+    queued.override = mode;
+    queued.request = request->pause();
+
+    {
+        std::lock_guard<std::mutex> lock(this->pendingMutex);
+        this->pending.push_back(queued);
+    }
+}
+
+void PlantWebServer::processPendingRequests() {
+    std::deque<WebRequest> toProcess;
+    {
+        std::lock_guard<std::mutex> lock(this->pendingMutex);
+        toProcess.swap(this->pending);
+    }
+
+    for (WebRequest& req : toProcess) {
+        if (req.type == WebRequestType::SaveConfig) {
+            /// We keep the previous config so a failed flash write doesn't
+            /// leave the in-memory copy diverged from what's persisted
+            PlantLightConfig previous = this->configManager->getConfig();
+            this->configManager->setConfig(req.config);
+
+            if (!this->configManager->saveConfiguration()) {
+                this->configManager->setConfig(previous);
+                if (auto request = req.request.lock()) {
+                    sendMessagePage(request.get(), 500, "Save Failed",
+                        "❌ Could not save configuration to flash memory.", true);
+                }
+                continue;
+            }
+
+            applyConfig(req.config);
+
+            String message = "✅ Settings saved successfully!";
+            if (req.needsReboot) {
+                message += "<br><br>⚠️  WiFi or timezone changed. Device will reboot in 3 seconds...";
+                message += "<br><br><a href='/'>← Back to Dashboard</a>";
+                if (auto request = req.request.lock()) {
+                    sendMessagePage(request.get(), 200, "Settings Saved", message, false);
+                }
+                Serial.println("🔄 WebServer: Scheduling reboot in 3 seconds...");
+                this->rebootPending = true;
+                this->rebootRequestedAt = millis();
+            } else {
+                message += "<br><br>Changes applied immediately.";
+                message += "<br><br><a href='/'>← Back to Dashboard</a>";
+                if (auto request = req.request.lock()) {
+                    sendMessagePage(request.get(), 200, "Settings Saved", message, false);
+                }
+            }
+        } else {  /// SetOverride
+            this->plantController->setManualOverride(req.override);
+            if (auto request = req.request.lock()) {
+                request->redirect("/");
+            }
         }
     }
 
-    request->redirect("/");
+    /// 3s gives the response time to leave the TCP stack before the reset
+    if (this->rebootPending && millis() - this->rebootRequestedAt >= 3000) {
+        ESP.restart();
+    }
 }
 
 String PlantWebServer::generateHTML() {
@@ -496,14 +631,14 @@ String PlantWebServer::generateSettingsSection() {
             <div class="form-group">
                 <label for="wifi_ssid">WiFi SSID</label>
                 <input type="text" id="wifi_ssid" name="wifi_ssid" maxlength="31" value=")";
-    html += String(config.wifiSSID);
+    html += htmlEscape(String(config.wifiSSID));
     html += R"(" required>
             </div>
 
             <div class="form-group">
                 <label for="wifi_pass">WiFi Password</label>
                 <input type="password" id="wifi_pass" name="wifi_pass" maxlength="63" value=")";
-    html += String(config.wifiPassword);
+    html += htmlEscape(String(config.wifiPassword));
     html += R"(" required>
             </div>
 

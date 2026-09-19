@@ -138,12 +138,20 @@ void ConfigManager::resetToDefaults() {
 }
 
 bool ConfigManager::isValid() const {
-    return validateSchedule() && validateThreshold() && validateHysteresis() &&
-           validateMinSwitchInterval() && validateTimezone();
+    return validate(this->config);
+}
+
+bool ConfigManager::validate(const PlantLightConfig& config) {
+    return validateSchedule(config) && validateThreshold(config) && validateHysteresis(config) &&
+           validateMinSwitchInterval(config) && validateTimezone(config);
 }
 
 const PlantLightConfig& ConfigManager::getConfig() const {
     return this->config;
+}
+
+void ConfigManager::setConfig(const PlantLightConfig& config) {
+    this->config = config;
 }
 
 void ConfigManager::setWiFiCredentials(const char* ssid, const char* password) {
@@ -191,9 +199,9 @@ void ConfigManager::printConfiguration() const {
     Serial.printf("  Config Version: %u\n", this->config.version);
 }
 
-bool ConfigManager::validateSchedule() const {
+bool ConfigManager::validateSchedule(const PlantLightConfig& config) {
     /// Hours must be in valid range 0-23
-    if (this->config.lightStartHour > 23 || this->config.lightEndHour > 23) {
+    if (config.lightStartHour > 23 || config.lightEndHour > 23) {
         Serial.println("❌ Invalid schedule: Hours must be 0-23");
         return false;
     }
@@ -203,42 +211,42 @@ bool ConfigManager::validateSchedule() const {
     return true;
 }
 
-bool ConfigManager::validateThreshold() const {
+bool ConfigManager::validateThreshold(const PlantLightConfig& config) {
     /// Threshold must be positive and within reasonable range
     /// VEML7700 max reading is ~120,000 lux
-    if (this->config.lightThresholdLux < 0.0 || this->config.lightThresholdLux > 10000.0) {
-        Serial.printf("❌ Invalid threshold: %.1f lux (must be 0-10000)\n", this->config.lightThresholdLux);
+    if (config.lightThresholdLux < 0.0 || config.lightThresholdLux > 10000.0) {
+        Serial.printf("❌ Invalid threshold: %.1f lux (must be 0-10000)\n", config.lightThresholdLux);
         return false;
     }
     return true;
 }
 
-bool ConfigManager::validateHysteresis() const {
+bool ConfigManager::validateHysteresis(const PlantLightConfig& config) {
     /// Hysteresis must be non-negative and reasonable
     /// Maximum 100 lux is a reasonable upper bound
-    if (this->config.hysteresisLux < 0.0 || this->config.hysteresisLux > 100.0) {
-        Serial.printf("❌ Invalid hysteresis: %.1f lux (must be 0-100)\n", this->config.hysteresisLux);
+    if (config.hysteresisLux < 0.0 || config.hysteresisLux > 100.0) {
+        Serial.printf("❌ Invalid hysteresis: %.1f lux (must be 0-100)\n", config.hysteresisLux);
         return false;
     }
     return true;
 }
 
-bool ConfigManager::validateMinSwitchInterval() const {
+bool ConfigManager::validateMinSwitchInterval(const PlantLightConfig& config) {
     /// We require a nonzero floor to protect the relay hardware even though
     /// this setting is primarily about not annoying the user with clicking -
     /// 1s-10min covers everything from "barely any protection" to "very lazy"
-    if (this->config.minSwitchIntervalMs < 1000 || this->config.minSwitchIntervalMs > 600000) {
-        Serial.printf("❌ Invalid min switch interval: %u ms (must be 1000-600000)\n", this->config.minSwitchIntervalMs);
+    if (config.minSwitchIntervalMs < 1000 || config.minSwitchIntervalMs > 600000) {
+        Serial.printf("❌ Invalid min switch interval: %u ms (must be 1000-600000)\n", config.minSwitchIntervalMs);
         return false;
     }
     return true;
 }
 
-bool ConfigManager::validateTimezone() const{
+bool ConfigManager::validateTimezone(const PlantLightConfig& config) {
     /// Timezone offset must be within valid range
     /// UTC-12 (Baker Island) to UTC+14 (Kiribati)
-    if (this->config.timezoneOffsetHours < -12 || this->config.timezoneOffsetHours > 14) {
-        Serial.printf("❌ Invalid timezone: UTC%+d (must be -12 to +14)\n", this->config.timezoneOffsetHours);
+    if (config.timezoneOffsetHours < -12 || config.timezoneOffsetHours > 14) {
+        Serial.printf("❌ Invalid timezone: UTC%+d (must be -12 to +14)\n", config.timezoneOffsetHours);
         return false;
     }
     return true;
