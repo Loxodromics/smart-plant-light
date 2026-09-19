@@ -7,8 +7,19 @@
 #define I2C_SDA_PIN 19
 #define I2C_SCL_PIN 22
 
+/// WiFi credentials live in secrets.h (gitignored); these are the fallback
+/// used if that file is missing, e.g. on a fresh checkout.
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+
+#ifndef WIFI_SSID
 #define WIFI_SSID "YOUR_WIFI_SSID"          /// PLACEHOLDER
+#endif
+#ifndef WIFI_PASSWORD
 #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"  /// PLACEHOLDER
+#endif
+
 /// WiFi Configuration
 #define WIFI_TIMEOUT_MS 10000
 
